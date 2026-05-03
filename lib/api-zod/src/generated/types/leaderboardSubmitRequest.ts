@@ -6,10 +6,8 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface LeaderboardEntry {
-  rank: number;
+export interface LeaderboardSubmitRequest {
+  sessionId: string;
   playerName: string;
-  isVerified: boolean;
-  attemptCount: number;
-  solvedAt: string;
+  clerkUserId?: string;
 }

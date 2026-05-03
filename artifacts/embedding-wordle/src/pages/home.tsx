@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { useGetDailyPuzzle, useCreateSession, useSubmitSessionGuess } from "@workspace/api-client-react";
+import { useGetDailyPuzzle, getGetDailyPuzzleQueryKey, useCreateSession, useSubmitSessionGuess } from "@workspace/api-client-react";
 import type { GameSession } from "@workspace/api-client-react";
 import { getDeviceId } from "@/lib/device";
 import { Scene } from "@/components/scene";
 import type { HintWord, HintPhase, BhPhase, BhRevealedWord } from "@/components/scene";
 import { Layout } from "@/components/layout";
 import { HintTooltip } from "@/components/hint-tooltip";
+import { ScoreSubmitModal } from "@/components/score-submit-modal";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -46,6 +47,7 @@ export default function Home() {
   const [showSimilarity, setShowSimilarity] = useState(true);
   const [session, setSession] = useState<GameSession | null>(null);
   const [mobileHistoryOpen, setMobileHistoryOpen] = useState(false);
+  const [showScoreModal, setShowScoreModal] = useState(false);
 
   useEffect(() => { setDeviceId(getDeviceId()); }, []);
 
@@ -61,8 +63,9 @@ export default function Home() {
 
   const { data: puzzle, isLoading: isLoadingPuzzle } = useGetDailyPuzzle({
     query: {
-      refetchInterval: (data) => {
-        if (data?.modelReady === false) return 3000;
+      queryKey: getGetDailyPuzzleQueryKey(),
+      refetchInterval: (query) => {
+        if (query.state.data?.modelReady === false) return 3000;
         return false;
       }
     }
@@ -152,9 +155,18 @@ export default function Home() {
 
   const modelReady = puzzle?.modelReady ?? false;
   const isSolved = session?.solved ?? false;
+  const targetWord = session?.guesses?.find((g) => g.isCorrect)?.word ?? "";
   const sortedGuesses = session?.guesses
     ? [...session.guesses].sort((a, b) => a.distanceToTarget - b.distanceToTarget)
     : [];
+
+  useEffect(() => {
+    if (isSolved && !showScoreModal) {
+      const timer = setTimeout(() => setShowScoreModal(true), 1200);
+      return () => clearTimeout(timer);
+    }
+    return undefined;
+  }, [isSolved]);
 
   // Shared guess list content
   const GuessList = () => (
@@ -212,6 +224,7 @@ export default function Home() {
   );
 
   return (
+    <>
     <Layout>
       <div className="relative w-full h-screen overflow-hidden bg-black">
         {/* Scene — always full screen */}
@@ -434,5 +447,17 @@ export default function Home() {
         )}
       </div>
     </Layout>
+
+    {session && isSolved && (
+      <ScoreSubmitModal
+        open={showScoreModal}
+        onClose={() => setShowScoreModal(false)}
+        sessionId={session.id}
+        targetWord={targetWord}
+        attemptCount={session.attemptCount}
+        deviceId={deviceId}
+      />
+    )}
+    </>
   );
 }

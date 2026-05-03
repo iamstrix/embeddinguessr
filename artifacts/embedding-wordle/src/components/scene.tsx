@@ -299,7 +299,7 @@ function CameraFocuser({ targetPos }: { targetPos: [number, number, number] }) {
     focusedKeyRef.current = key;
 
     const [tx, ty, tz] = targetPos;
-    const ctrl = controls as { target: THREE.Vector3; update: () => void };
+    const ctrl = controls as unknown as { target: THREE.Vector3; update: () => void };
     // Move orbit center to the cluster
     ctrl.target.set(tx, ty, tz);
     // Position camera at a fixed offset from the cluster

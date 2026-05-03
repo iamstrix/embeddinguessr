@@ -16,5 +16,7 @@ export * from "./guessResult";
 export * from "./guessResultTemperature";
 export * from "./healthStatus";
 export * from "./leaderboardEntry";
+export * from "./leaderboardSubmitRequest";
 export * from "./puzzle";
 export * from "./sessionGuessResult";
+export * from "./streakInfo";

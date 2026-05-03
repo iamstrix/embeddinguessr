@@ -11,7 +11,7 @@ tags:
   - name: health
     description: Health operations
   - name: game
-    description: Embedding Wordle game operations
+    description: EmbeddinGuessr game operations
 paths:
   /healthz:
     get:
@@ -109,6 +109,38 @@ paths:
                 items:
                   $ref: "#/components/schemas/LeaderboardEntry"
 
+  /game/leaderboard/submit:
+    post:
+      operationId: submitLeaderboardScore
+      tags: [game]
+      summary: Submit score to leaderboard
+      description: Attaches a player name and optional Clerk user ID to a solved session, making it appear on the leaderboard with the player's name.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LeaderboardSubmitRequest"
+      responses:
+        "200":
+          description: Updated leaderboard entry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LeaderboardEntry"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Session not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /game/session:
     post:
       operationId: createSession
@@ -180,6 +212,26 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/GameStats"
+
+  /game/streak/{deviceId}:
+    get:
+      operationId: getStreak
+      tags: [game]
+      summary: Get player streak
+      description: Returns the current and longest daily streak for a device
+      parameters:
+        - in: path
+          name: deviceId
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Streak info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StreakInfo"
 
 components:
   schemas:
@@ -340,17 +392,50 @@ components:
       properties:
         rank:
           type: integer
-        deviceId:
+        playerName:
           type: string
+        isVerified:
+          type: boolean
         attemptCount:
           type: integer
         solvedAt:
           type: string
       required:
         - rank
-        - deviceId
+        - playerName
+        - isVerified
         - attemptCount
         - solvedAt
+
+    LeaderboardSubmitRequest:
+      type: object
+      properties:
+        sessionId:
+          type: string
+        playerName:
+          type: string
+        clerkUserId:
+          type: string
+      required:
+        - sessionId
+        - playerName
+
+    StreakInfo:
+      type: object
+      properties:
+        deviceId:
+          type: string
+        currentStreak:
+          type: integer
+        longestStreak:
+          type: integer
+        lastSolvedDate:
+          type: string
+          nullable: true
+      required:
+        - deviceId
+        - currentStreak
+        - longestStreak
 
     GameStats:
       type: object

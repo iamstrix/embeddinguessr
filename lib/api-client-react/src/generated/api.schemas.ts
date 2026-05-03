@@ -81,9 +81,23 @@ export interface SessionGuessResult {
 
 export interface LeaderboardEntry {
   rank: number;
-  deviceId: string;
+  playerName: string;
+  isVerified: boolean;
   attemptCount: number;
   solvedAt: string;
+}
+
+export interface LeaderboardSubmitRequest {
+  sessionId: string;
+  playerName: string;
+  clerkUserId?: string;
+}
+
+export interface StreakInfo {
+  deviceId: string;
+  currentStreak: number;
+  longestStreak: number;
+  lastSolvedDate?: string | null;
 }
 
 export interface GameStats {

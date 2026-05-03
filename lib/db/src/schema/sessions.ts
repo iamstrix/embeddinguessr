@@ -9,6 +9,8 @@ export const sessionsTable = pgTable("sessions", {
   guesses: jsonb("guesses").notNull().default([]),
   solved: boolean("solved").notNull().default(false),
   attemptCount: integer("attempt_count").notNull().default(0),
+  playerName: text("player_name"),
+  clerkUserId: text("clerk_user_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

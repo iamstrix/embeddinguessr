@@ -25,8 +25,10 @@ import type {
   GuessResult,
   HealthStatus,
   LeaderboardEntry,
+  LeaderboardSubmitRequest,
   Puzzle,
   SessionGuessResult,
+  StreakInfo,
 } from "./api.schemas";
 
 import { customFetch } from "../custom-fetch";
@@ -436,6 +438,94 @@ export function useGetLeaderboard<
 }
 
 /**
+ * Attaches a player name and optional Clerk user ID to a solved session, making it appear on the leaderboard with the player's name.
+ * @summary Submit score to leaderboard
+ */
+export const getSubmitLeaderboardScoreUrl = () => {
+  return `/api/game/leaderboard/submit`;
+};
+
+export const submitLeaderboardScore = async (
+  leaderboardSubmitRequest: LeaderboardSubmitRequest,
+  options?: RequestInit,
+): Promise<LeaderboardEntry> => {
+  return customFetch<LeaderboardEntry>(getSubmitLeaderboardScoreUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(leaderboardSubmitRequest),
+  });
+};
+
+export const getSubmitLeaderboardScoreMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof submitLeaderboardScore>>,
+    TError,
+    { data: BodyType<LeaderboardSubmitRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof submitLeaderboardScore>>,
+  TError,
+  { data: BodyType<LeaderboardSubmitRequest> },
+  TContext
+> => {
+  const mutationKey = ["submitLeaderboardScore"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof submitLeaderboardScore>>,
+    { data: BodyType<LeaderboardSubmitRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return submitLeaderboardScore(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type SubmitLeaderboardScoreMutationResult = NonNullable<
+  Awaited<ReturnType<typeof submitLeaderboardScore>>
+>;
+export type SubmitLeaderboardScoreMutationBody =
+  BodyType<LeaderboardSubmitRequest>;
+export type SubmitLeaderboardScoreMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Submit score to leaderboard
+ */
+export const useSubmitLeaderboardScore = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof submitLeaderboardScore>>,
+    TError,
+    { data: BodyType<LeaderboardSubmitRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof submitLeaderboardScore>>,
+  TError,
+  { data: BodyType<LeaderboardSubmitRequest> },
+  TContext
+> => {
+  return useMutation(getSubmitLeaderboardScoreMutationOptions(options));
+};
+
+/**
  * Creates a new game session for the daily puzzle. Returns existing session if one exists for this device.
  * @summary Create or resume a game session
  */
@@ -678,6 +768,92 @@ export function useGetGameStats<
   request?: SecondParameter<typeof customFetch>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetGameStatsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * Returns the current and longest daily streak for a device
+ * @summary Get player streak
+ */
+export const getGetStreakUrl = (deviceId: string) => {
+  return `/api/game/streak/${deviceId}`;
+};
+
+export const getStreak = async (
+  deviceId: string,
+  options?: RequestInit,
+): Promise<StreakInfo> => {
+  return customFetch<StreakInfo>(getGetStreakUrl(deviceId), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetStreakQueryKey = (deviceId: string) => {
+  return [`/api/game/streak/${deviceId}`] as const;
+};
+
+export const getGetStreakQueryOptions = <
+  TData = Awaited<ReturnType<typeof getStreak>>,
+  TError = ErrorType<unknown>,
+>(
+  deviceId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getStreak>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetStreakQueryKey(deviceId);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getStreak>>> = ({
+    signal,
+  }) => getStreak(deviceId, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!deviceId,
+    ...queryOptions,
+  } as UseQueryOptions<Awaited<ReturnType<typeof getStreak>>, TError, TData> & {
+    queryKey: QueryKey;
+  };
+};
+
+export type GetStreakQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getStreak>>
+>;
+export type GetStreakQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get player streak
+ */
+
+export function useGetStreak<
+  TData = Awaited<ReturnType<typeof getStreak>>,
+  TError = ErrorType<unknown>,
+>(
+  deviceId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getStreak>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetStreakQueryOptions(deviceId, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

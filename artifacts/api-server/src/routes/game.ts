@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { eq, desc, count, avg, and } from "drizzle-orm";
-import { db, puzzlesTable, sessionsTable, wordEmbeddingsTable } from "@workspace/db";
+import { getAuth } from "@clerk/express";
+import { db, puzzlesTable, sessionsTable, wordEmbeddingsTable, streaksTable } from "@workspace/db";
 import {
   SubmitGuessBody,
   CreateSessionBody,
@@ -43,6 +44,36 @@ async function resolvePosition(
   // Not in library — project on-the-fly into the same global space
   const p = projectTo3D(guessVec, getGlobalPcaParams());
   return { x: p.x * COORD_SCALE, y: p.y * COORD_SCALE, z: p.z * COORD_SCALE };
+}
+
+/** Update (or create) the streak record for a device after solving a daily puzzle. */
+async function updateStreak(deviceId: string, puzzleDate: string): Promise<void> {
+  const today = new Date().toISOString().split("T")[0];
+  if (puzzleDate !== today) return; // only daily puzzles count
+
+  const yesterday = new Date(Date.now() - 86_400_000).toISOString().split("T")[0];
+
+  const [existing] = await db
+    .select()
+    .from(streaksTable)
+    .where(eq(streaksTable.deviceId, deviceId));
+
+  if (existing) {
+    if (existing.lastSolvedDate === today) return; // already counted
+    const newStreak = existing.lastSolvedDate === yesterday ? existing.currentStreak + 1 : 1;
+    const newLongest = Math.max(newStreak, existing.longestStreak);
+    await db
+      .update(streaksTable)
+      .set({ currentStreak: newStreak, longestStreak: newLongest, lastSolvedDate: today })
+      .where(eq(streaksTable.deviceId, deviceId));
+  } else {
+    await db.insert(streaksTable).values({
+      deviceId,
+      currentStreak: 1,
+      longestStreak: 1,
+      lastSolvedDate: today,
+    });
+  }
 }
 
 router.post("/game/endless", async (req, res): Promise<void> => {
@@ -286,6 +317,11 @@ router.post("/game/session/:sessionId/submit", async (req, res): Promise<void> =
     .where(eq(sessionsTable.id, rawId))
     .returning();
 
+  // Auto-update streak when first solve on a daily puzzle
+  if (isCorrect && !session.solved) {
+    updateStreak(session.deviceId, puzzle.date).catch(() => {});
+  }
+
   res.json({
     guess: guessResult,
     session: {
@@ -312,18 +348,123 @@ router.get("/game/leaderboard", async (req, res): Promise<void> => {
   const solvedSessions = await db
     .select()
     .from(sessionsTable)
-    .where(and(eq(sessionsTable.puzzleId, puzzle.id), eq(sessionsTable.solved, true)))
+    .where(
+      and(
+        eq(sessionsTable.puzzleId, puzzle.id),
+        eq(sessionsTable.solved, true),
+      ),
+    )
     .orderBy(sessionsTable.attemptCount)
-    .limit(10);
+    .limit(20);
 
-  const entries = solvedSessions.map((s, i) => ({
+  // Only show sessions that have submitted a name
+  const namedSessions = solvedSessions.filter((s) => s.playerName);
+
+  const entries = namedSessions.map((s, i) => ({
     rank: i + 1,
-    deviceId: s.deviceId.slice(0, 8) + "...",
+    playerName: s.playerName ?? "Anonymous",
+    isVerified: !!s.clerkUserId,
     attemptCount: s.attemptCount,
     solvedAt: s.updatedAt.toISOString(),
   }));
 
   res.json(entries);
+});
+
+router.post("/game/leaderboard/submit", async (req, res): Promise<void> => {
+  const { sessionId, playerName, clerkUserId } = req.body as {
+    sessionId: string;
+    playerName: string;
+    clerkUserId?: string;
+  };
+
+  if (!sessionId || !playerName?.trim()) {
+    res.status(400).json({ error: "sessionId and playerName are required" });
+    return;
+  }
+
+  const [session] = await db.select().from(sessionsTable).where(eq(sessionsTable.id, sessionId));
+  if (!session) {
+    res.status(404).json({ error: "Session not found" });
+    return;
+  }
+
+  if (!session.solved) {
+    res.status(400).json({ error: "Session not yet solved" });
+    return;
+  }
+
+  // Verify Clerk auth if a clerkUserId is provided
+  let verifiedClerkId: string | null = null;
+  if (clerkUserId) {
+    const auth = getAuth(req as any);
+    const authUserId = auth?.userId;
+    if (authUserId && authUserId === clerkUserId) {
+      verifiedClerkId = authUserId;
+    }
+  }
+
+  const [updatedSession] = await db
+    .update(sessionsTable)
+    .set({ playerName: playerName.trim().slice(0, 32), clerkUserId: verifiedClerkId ?? undefined })
+    .where(eq(sessionsTable.id, sessionId))
+    .returning();
+
+  // Compute rank
+  const [puzzle] = await db.select().from(puzzlesTable).where(eq(puzzlesTable.id, session.puzzleId));
+
+  let rank = 1;
+  if (puzzle) {
+    const betterSessions = await db
+      .select({ cnt: count() })
+      .from(sessionsTable)
+      .where(
+        and(
+          eq(sessionsTable.puzzleId, puzzle.id),
+          eq(sessionsTable.solved, true),
+        ),
+      );
+    // approximate rank by guess count
+    const allSolved = await db
+      .select()
+      .from(sessionsTable)
+      .where(and(eq(sessionsTable.puzzleId, puzzle.id), eq(sessionsTable.solved, true)))
+      .orderBy(sessionsTable.attemptCount);
+
+    const named = allSolved.filter((s) => s.playerName);
+    rank = named.findIndex((s) => s.id === sessionId) + 1 || 1;
+  }
+
+  res.json({
+    rank,
+    playerName: updatedSession.playerName ?? playerName,
+    isVerified: !!verifiedClerkId,
+    attemptCount: updatedSession.attemptCount,
+    solvedAt: updatedSession.updatedAt.toISOString(),
+  });
+});
+
+router.get("/game/streak/:deviceId", async (req, res): Promise<void> => {
+  const rawDeviceId = Array.isArray(req.params.deviceId)
+    ? req.params.deviceId[0]
+    : req.params.deviceId;
+
+  if (!rawDeviceId) {
+    res.status(400).json({ error: "deviceId is required" });
+    return;
+  }
+
+  const [streak] = await db
+    .select()
+    .from(streaksTable)
+    .where(eq(streaksTable.deviceId, rawDeviceId));
+
+  res.json({
+    deviceId: rawDeviceId,
+    currentStreak: streak?.currentStreak ?? 0,
+    longestStreak: streak?.longestStreak ?? 0,
+    lastSolvedDate: streak?.lastSolvedDate ?? null,
+  });
 });
 
 router.get("/game/stats", async (req, res): Promise<void> => {

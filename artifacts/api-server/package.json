@@ -10,6 +10,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@clerk/express": "^2.1.12",
+    "@clerk/shared": "^4.9.0",
     "@workspace/api-zod": "workspace:*",
     "@workspace/db": "workspace:*",
     "@xenova/transformers": "^2.17.2",
@@ -17,6 +19,7 @@
     "cors": "^2",
     "drizzle-orm": "catalog:",
     "express": "^5",
+    "http-proxy-middleware": "^3.0.5",
     "onnxruntime-node": "^1.25.1",
     "pino": "^9",
     "pino-http": "^10"

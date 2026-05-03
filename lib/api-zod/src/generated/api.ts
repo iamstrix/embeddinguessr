@@ -117,11 +117,30 @@ export const SubmitGuessResponse = zod.object({
  */
 export const GetLeaderboardResponseItem = zod.object({
   rank: zod.number(),
-  deviceId: zod.string(),
+  playerName: zod.string(),
+  isVerified: zod.boolean(),
   attemptCount: zod.number(),
   solvedAt: zod.string(),
 });
 export const GetLeaderboardResponse = zod.array(GetLeaderboardResponseItem);
+
+/**
+ * Attaches a player name and optional Clerk user ID to a solved session, making it appear on the leaderboard with the player's name.
+ * @summary Submit score to leaderboard
+ */
+export const SubmitLeaderboardScoreBody = zod.object({
+  sessionId: zod.string(),
+  playerName: zod.string(),
+  clerkUserId: zod.string().optional(),
+});
+
+export const SubmitLeaderboardScoreResponse = zod.object({
+  rank: zod.number(),
+  playerName: zod.string(),
+  isVerified: zod.boolean(),
+  attemptCount: zod.number(),
+  solvedAt: zod.string(),
+});
 
 /**
  * Creates a new game session for the daily puzzle. Returns existing session if one exists for this device.
@@ -230,4 +249,19 @@ export const GetGameStatsResponse = zod.object({
   averageGuesses: zod.number(),
   solveRate: zod.number(),
   puzzleDate: zod.string(),
+});
+
+/**
+ * Returns the current and longest daily streak for a device
+ * @summary Get player streak
+ */
+export const GetStreakParams = zod.object({
+  deviceId: zod.coerce.string(),
+});
+
+export const GetStreakResponse = zod.object({
+  deviceId: zod.string(),
+  currentStreak: zod.number(),
+  longestStreak: zod.number(),
+  lastSolvedDate: zod.string().nullish(),
 });
