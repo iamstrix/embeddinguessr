@@ -314,7 +314,7 @@ function isoProject(x: number, y: number, z: number) {
   };
 }
 
-const SUN_SVG = { x: 58, y: 448 };
+const SUN_SVG = { x: 645, y: 455 };
 const SUN_R = 16;
 const SUN_RAY_ANGLES = [0, 45, 90, 135, 180, 225, 270, 315];
 

@@ -381,7 +381,7 @@ router.post("/game/hint", async (req, res): Promise<void> => {
       z: w.z,
       similarity: cosineSimilarity(w.embedding as number[], targetVec),
     }))
-    .filter((w) => w.similarity >= 0.55 && w.similarity <= 0.88)
+    .filter((w) => w.similarity >= 0.3)
     .sort((a, b) => b.similarity - a.similarity)
     .slice(0, 3);
 
