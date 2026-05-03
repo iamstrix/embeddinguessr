@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useGetDailyPuzzle, useCreateSession, useSubmitSessionGuess } from "@workspace/api-client-react";
+import type { GameSession } from "@workspace/api-client-react";
 import { getDeviceId } from "@/lib/device";
 import { Scene } from "@/components/scene";
 import type { HintWord, HintPhase, BhPhase, BhRevealedWord } from "@/components/scene";
@@ -42,6 +43,7 @@ export default function Home() {
   const [bhPhase, setBhPhase] = useState<BhPhase>("idle");
   const [bhRevealedWord, setBhRevealedWord] = useState<BhRevealedWord | null>(null);
   const [showSimilarity, setShowSimilarity] = useState(true);
+  const [session, setSession] = useState<GameSession | null>(null);
 
   useEffect(() => { setDeviceId(getDeviceId()); }, []);
 
@@ -64,11 +66,13 @@ export default function Home() {
     }
   });
 
-  const { data: session, mutate: createSession, isPending: isCreatingSession } = useCreateSession();
+  const { mutate: createSession, isPending: isCreatingSession } = useCreateSession();
 
   useEffect(() => {
     if (deviceId && puzzle && puzzle.modelReady && !session && !isCreatingSession) {
-      createSession({ data: { deviceId, puzzleId: puzzle.id } });
+      createSession({ data: { deviceId, puzzleId: puzzle.id } }, {
+        onSuccess: (newSession) => setSession(newSession),
+      });
     }
   }, [deviceId, puzzle, session, createSession, isCreatingSession]);
 
@@ -81,6 +85,7 @@ export default function Home() {
       { sessionId: session.id, data: { word: guessInput.trim().toLowerCase(), puzzleId: puzzle.id } },
       {
         onSuccess: (result) => {
+          setSession(result.session);
           setGuessInput("");
           const latest = result.session.guesses?.at(-1);
           if (latest) {
