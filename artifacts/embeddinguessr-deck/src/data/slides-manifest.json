@@ -1,1 +1,58 @@
-[]
+[
+  {
+    "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567891",
+    "position": 1,
+    "filepath": "src/pages/slides/Slide1Title.tsx",
+    "title": "EmbeddinGuessr",
+    "description": "Title slide — game name, badge, subtitle, and feature pills",
+    "speakerNotes": "Welcome. I'm going to show you EmbeddinGuessr — a word game built around the mathematical structure of language. The premise: words are not just text. They occupy positions in a high-dimensional mathematical space, and similar words cluster together. This game makes that abstract space playable."
+  },
+  {
+    "id": "b2c3d4e5-f6a7-8901-bcde-f12345678902",
+    "position": 2,
+    "filepath": "src/pages/slides/Slide2Concept.tsx",
+    "title": "Words have positions",
+    "description": "Concept slide — semantic space explanation with scatter plot visualization",
+    "speakerNotes": "Here is the underlying idea. When you train a language model, every word gets encoded as a high-dimensional vector — a point in hundreds of dimensions. Words that share meaning end up close together. 'King' sits near 'queen'. 'Ocean' sits near 'river'. EmbeddinGuessr takes that abstract mathematical space and renders it visually in three dimensions, so you can see the structure and navigate it."
+  },
+  {
+    "id": "c3d4e5f6-a7b8-9012-cdef-123456789003",
+    "position": 3,
+    "filepath": "src/pages/slides/Slide3HowToPlay.tsx",
+    "title": "How to play",
+    "description": "Gameplay — four sequential steps in a horizontal card layout",
+    "speakerNotes": "The game is simple. You type any word as your guess. It immediately appears as a point in 3D semantic space, colored by distance from the target — red means cold, green means you are close. You look at where your guesses land relative to each other, find the clusters, and use the geometry to zero in on the hidden word. Each guess is a step through the space."
+  },
+  {
+    "id": "d4e5f6a7-b8c9-0123-defa-234567890104",
+    "position": 4,
+    "filepath": "src/pages/slides/Slide4Modes.tsx",
+    "title": "Two modes",
+    "description": "Daily vs Endless — two-column comparison",
+    "speakerNotes": "There are two ways to play. Daily mode gives you one new word every day. Everyone in the world solves the same puzzle. Your score lands on a global leaderboard and you build a streak for every consecutive day you solve it. Endless mode lets you play as many rounds as you want, tracking your average guess count over time and ranking you against other players on that metric."
+  },
+  {
+    "id": "e5f6a7b8-c9d0-1234-efab-345678901205",
+    "position": 5,
+    "filepath": "src/pages/slides/Slide5Tech.tsx",
+    "title": "Under the hood",
+    "description": "Technology — four tech components in a 2x2 grid",
+    "speakerNotes": "Under the hood: the semantic embeddings come from a word2vec-style model trained on 179 reference words. We use Principal Component Analysis to project those high-dimensional vectors down to three dimensions while preserving as much structure as possible. The 3D scene is rendered in real time using React Three Fiber. The backend is Express with a PostgreSQL database managed through Drizzle ORM, handling game state, sessions, and leaderboard data."
+  },
+  {
+    "id": "f6a7b8c9-d0e1-2345-fabc-456789012306",
+    "position": 6,
+    "filepath": "src/pages/slides/Slide6Compete.tsx",
+    "title": "Compete",
+    "description": "Leaderboard features — four feature tiles in a 2x2 grid",
+    "speakerNotes": "The competitive side. You create an account with a username and password. Your scores are tied to that account across sessions. On daily mode, your guess count goes on today's live leaderboard — you can watch new scores appear as other players solve the same puzzle. The game also tracks your consecutive daily streak and, in endless mode, your average guess count across all rounds."
+  },
+  {
+    "id": "a7b8c9d0-e1f2-3456-abcd-567890123407",
+    "position": 7,
+    "filepath": "src/pages/slides/Slide7Try.tsx",
+    "title": "Try it",
+    "description": "Closing slide — URL and call to play",
+    "speakerNotes": "That is EmbeddinGuessr. You can play it right now at the URL on screen. Create an account, type your first guess, and see how quickly you can navigate into the semantic neighborhood of the hidden word. New word every day at midnight. I'm happy to take any questions, or we can pull it up and play a round together."
+  }
+]

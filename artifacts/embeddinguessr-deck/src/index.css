@@ -11,15 +11,14 @@
 }
 
 :root {
-  /* Replace these with brand colors */
-  --slide-primary: #4f46e5;
-  --slide-accent: #06b6d4;
-  --slide-bg: #f8fafc;
-  --slide-text: #0f172a;
-  --slide-muted: #64748b;
+  --slide-primary: #4F7FFF;
+  --slide-accent: #7C6BF0;
+  --slide-bg: #0C0F1A;
+  --slide-text: #ffffff;
+  --slide-muted: rgba(255, 255, 255, 0.5);
   --font-display-family: "Inter", system-ui, sans-serif;
   --font-body-family: "Inter", system-ui, sans-serif;
-  color-scheme: light;
+  color-scheme: dark;
 }
 
 html,
