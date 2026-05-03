@@ -1,8 +1,10 @@
 import { Link, useLocation } from "wouter";
-import { LayoutDashboard, Trophy, BarChart2, Infinity } from "lucide-react";
+import { LayoutDashboard, Trophy, BarChart2, Infinity, Volume2, VolumeX } from "lucide-react";
+import { useSpaceAudio } from "../hooks/use-space-audio";
 
 export function FloatingNav() {
   const [location] = useLocation();
+  const { muted, toggleMute, started } = useSpaceAudio();
 
   return (
     <nav className="fixed top-4 right-4 z-50 flex gap-2">
@@ -18,6 +20,19 @@ export function FloatingNav() {
       <Link href="/stats" className={`p-2 rounded-full backdrop-blur-md border transition-colors ${location === '/stats' ? 'bg-primary/20 border-primary text-primary' : 'bg-black/20 border-white/10 text-white/70 hover:bg-black/40 hover:text-white'}`}>
         <BarChart2 size={20} />
       </Link>
+      <button
+        onClick={toggleMute}
+        title={muted ? "Unmute ambient audio (M)" : "Mute ambient audio (M)"}
+        className={`p-2 rounded-full backdrop-blur-md border transition-all duration-300 ${
+          !started ? 'opacity-40' : ''
+        } ${
+          muted
+            ? 'bg-black/20 border-white/10 text-white/40 hover:bg-black/40 hover:text-white/70'
+            : 'bg-black/20 border-white/10 text-white/70 hover:bg-black/40 hover:text-white'
+        }`}
+      >
+        {muted ? <VolumeX size={20} /> : <Volume2 size={20} />}
+      </button>
     </nav>
   );
 }
