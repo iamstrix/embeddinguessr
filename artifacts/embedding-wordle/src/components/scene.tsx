@@ -1,4 +1,4 @@
-import { Canvas, useFrame } from "@react-three/fiber";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls, Stars, Html, Line } from "@react-three/drei";
 import { useRef, useState, useEffect, useMemo, useCallback, Component } from "react";
 import type { ReactNode } from "react";
@@ -288,6 +288,28 @@ function BhExplosion3D({ position }: { position: [number, number, number] }) {
   return <>{ring(m1, mat1, "#a855f7")}{ring(m2, mat2, "#7c3aed")}{ring(m3, mat3, "#c084fc")}</>;
 }
 
+function CameraFocuser({ targetPos }: { targetPos: [number, number, number] }) {
+  const { camera, controls } = useThree();
+  const focusedKeyRef = useRef<string>("");
+
+  useEffect(() => {
+    const key = targetPos.join(",");
+    // Guard: don't re-focus on [0,0,0] placeholder or if already focused on this target
+    if (key === "0,0,0" || focusedKeyRef.current === key || !controls) return;
+    focusedKeyRef.current = key;
+
+    const [tx, ty, tz] = targetPos;
+    const ctrl = controls as { target: THREE.Vector3; update: () => void };
+    // Move orbit center to the cluster
+    ctrl.target.set(tx, ty, tz);
+    // Position camera at a fixed offset from the cluster
+    camera.position.set(tx + 5, ty + 5, tz + 8);
+    ctrl.update();
+  }, [controls, camera, targetPos]);
+
+  return null;
+}
+
 function Scene3D({ clues, target, guesses, solved, modelReady, hintWords, hintPhase, bhPhase, bhEnergy, bhRevealedWord, autoRotate, showSimilarity, onWordHover }: {
   clues: EmbeddingPoint[]; target: EmbeddingPoint | null; guesses: GuessResult[];
   solved: boolean; modelReady: boolean; hintWords?: HintWord[]; hintPhase?: HintPhase;
@@ -377,6 +399,7 @@ function Scene3D({ clues, target, guesses, solved, modelReady, hintWords, hintPh
       {showPullGuesses && <BhPullSpheres3D guesses={guesses} targetPos={targetPos3D} />}
 
       <OrbitControls makeDefault autoRotate={!solved && autoRotate !== false} autoRotateSpeed={0.15} enableDamping dampingFactor={0.05} />
+      <CameraFocuser targetPos={targetPos3D} />
     </Canvas>
   );
 }
