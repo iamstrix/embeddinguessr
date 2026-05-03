@@ -7,7 +7,9 @@
  */
 
 export interface EndlessSubmitRequest {
-  clerkUserId: string;
-  playerName: string;
+  /** Display name / account identifier. Auto-registers on first use. */
+  username: string;
+  /** Password for this account. Must match on subsequent submissions. */
+  password: string;
   guessCount: number;
 }

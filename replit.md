@@ -17,7 +17,7 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 - **Build**: esbuild (CJS bundle)
 - **Embeddings**: @xenova/transformers (Xenova/all-MiniLM-L6-v2, runs in Node.js)
 - **3D rendering**: @react-three/fiber, @react-three/drei, three
-- **Auth**: Clerk (`@clerk/express` server-side, `@clerk/react` client-side)
+- **Auth**: Simple username/password (bcryptjs, no sessions — credentials sent with each endless score submission)
 
 ## Key Commands
 
@@ -37,15 +37,16 @@ A 3D semantic word-guessing game where word embeddings are visualized as points 
 
 ### DB Schema
 - `lib/db/src/schema/puzzles.ts` — Daily puzzle table (target word, clue words, 3D positions, embedding vectors)
-- `lib/db/src/schema/sessions.ts` — Player game sessions (guesses, solved state, playerName, clerkUserId)
+- `lib/db/src/schema/sessions.ts` — Player game sessions (guesses, solved state, playerName)
 - `lib/db/src/schema/streaks.ts` — Daily streak tracking per device (currentStreak, longestStreak, lastSolvedDate)
-- `lib/db/src/schema/endless-scores.ts` — Per-game endless mode scores (clerkUserId, playerName, guessCount)
+- `lib/db/src/schema/app-users.ts` — Endless mode accounts (id, username unique, passwordHash)
+- `lib/db/src/schema/endless-scores.ts` — Per-game endless mode scores (appUserId FK, username, guessCount)
 
-### Auth (Clerk)
-- Clerk proxy middleware runs at `/api/__clerk` so browser FAPI calls work
-- Server uses `clerkMiddleware()` + `getAuth(req)` for verifying signed-in users
-- Frontend uses `ClerkProvider` with `publishableKey` from `VITE_CLERK_PUBLISHABLE_KEY`
-- Sign-in/sign-up routes: `/sign-in`, `/sign-up`
+### Auth (Endless mode — simple username/password)
+- No sessions or tokens — credentials sent with each `POST /game/endless/leaderboard/submit`
+- Backend auto-registers new usernames; verifies bcrypt password hash for returning players
+- Wrong password → 401; username taken with different password → 401
+- Frontend stores last-used username in `localStorage["endlessAuth"]` for convenience
 
 ### API Routes (all under `/api`)
 - `GET /game/daily` — today's puzzle
@@ -55,15 +56,15 @@ A 3D semantic word-guessing game where word embeddings are visualized as points 
 - `GET /game/leaderboard` — daily top scores (named sessions only)
 - `POST /game/leaderboard/submit` — submit name to daily leaderboard (idempotent — once per session)
 - `GET /game/endless/leaderboard` — endless leaderboard (total games, avg guesses per player)
-- `POST /game/endless/leaderboard/submit` — submit endless score (requires Clerk auth)
+- `POST /game/endless/leaderboard/submit` — submit endless score (username + password + guessCount; auto-registers new users)
 - `GET /game/streak/:deviceId` — current/longest daily streak for a device
 - `GET /game/stats` — aggregate stats for today's puzzle
 - `POST /game/hint` — solar hint (3 nearby words)
 - `POST /game/black-hole` — void hint (masked target word reveal)
 
 ### Leaderboard Design
-- **Daily**: ranked by fewest guesses; playerName set once per session (idempotent); verified badge for Clerk users
-- **Endless**: aggregated per-player (by clerkUserId); ranked by average guesses; requires sign-in to submit
+- **Daily**: ranked by fewest guesses; playerName set once per session (idempotent)
+- **Endless**: aggregated per-player (by appUserId); ranked by average guesses; username + password submitted with each score
 
 ### Embedding Engine
 - `artifacts/api-server/src/lib/embeddings.ts` — Loads `@xenova/transformers` (MiniLM-L6-v2), computes word embeddings, runs PCA to reduce to 3D, generates daily puzzles

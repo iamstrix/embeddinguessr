@@ -9,5 +9,4 @@
 export interface LeaderboardSubmitRequest {
   sessionId: string;
   playerName: string;
-  clerkUserId?: string;
 }

@@ -353,7 +353,7 @@ export function useGetEndlessLeaderboard<
 }
 
 /**
- * Records a completed endless game for a signed-in player. Requires Clerk authentication.
+ * Records a completed endless game. Registers the player if username is new, or verifies password if returning. Returns updated leaderboard entry.
  * @summary Submit an endless mode score
  */
 export const getSubmitEndlessScoreUrl = () => {
@@ -603,7 +603,7 @@ export function useGetLeaderboard<
 }
 
 /**
- * Attaches a player name and optional Clerk user ID to a solved session. Idempotent — returns existing entry if already submitted.
+ * Attaches a player name to a solved session. Idempotent — returns existing entry if already submitted.
  * @summary Submit score to leaderboard
  */
 export const getSubmitLeaderboardScoreUrl = () => {

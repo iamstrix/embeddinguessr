@@ -88,7 +88,7 @@ paths:
       operationId: submitEndlessScore
       tags: [game]
       summary: Submit an endless mode score
-      description: Records a completed endless game for a signed-in player. Requires Clerk authentication.
+      description: Records a completed endless game. Registers the player if username is new, or verifies password if returning. Returns updated leaderboard entry.
       requestBody:
         required: true
         content:
@@ -103,7 +103,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/EndlessLeaderboardEntry"
         "401":
-          description: Not authenticated
+          description: Wrong password for existing username
           content:
             application/json:
               schema:
@@ -162,7 +162,7 @@ paths:
       operationId: submitLeaderboardScore
       tags: [game]
       summary: Submit score to leaderboard
-      description: Attaches a player name and optional Clerk user ID to a solved session. Idempotent — returns existing entry if already submitted.
+      description: Attaches a player name to a solved session. Idempotent — returns existing entry if already submitted.
       requestBody:
         required: true
         content:
@@ -469,8 +469,6 @@ components:
           type: string
         playerName:
           type: string
-        clerkUserId:
-          type: string
       required:
         - sessionId
         - playerName
@@ -480,10 +478,8 @@ components:
       properties:
         rank:
           type: integer
-        playerName:
+        username:
           type: string
-        isVerified:
-          type: boolean
         gamesPlayed:
           type: integer
         totalGuesses:
@@ -494,8 +490,7 @@ components:
           type: string
       required:
         - rank
-        - playerName
-        - isVerified
+        - username
         - gamesPlayed
         - totalGuesses
         - avgGuesses
@@ -504,15 +499,17 @@ components:
     EndlessSubmitRequest:
       type: object
       properties:
-        clerkUserId:
+        username:
           type: string
-        playerName:
+          description: Display name / account identifier. Auto-registers on first use.
+        password:
           type: string
+          description: Password for this account. Must match on subsequent submissions.
         guessCount:
           type: integer
       required:
-        - clerkUserId
-        - playerName
+        - username
+        - password
         - guessCount
 
     StreakInfo:

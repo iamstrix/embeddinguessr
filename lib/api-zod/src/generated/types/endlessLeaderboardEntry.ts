@@ -8,8 +8,7 @@
 
 export interface EndlessLeaderboardEntry {
   rank: number;
-  playerName: string;
-  isVerified: boolean;
+  username: string;
   gamesPlayed: number;
   totalGuesses: number;
   avgGuesses: number;

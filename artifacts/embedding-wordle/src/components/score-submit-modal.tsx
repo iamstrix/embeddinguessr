@@ -1,8 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useUser, useClerk } from "@clerk/react";
 import { useSubmitLeaderboardScore, useGetStreak } from "@workspace/api-client-react";
-import { Trophy, Flame, Star, LogIn, X, Check } from "lucide-react";
+import { Trophy, Flame, X, Check } from "lucide-react";
 
 interface ScoreSubmitModalProps {
   open: boolean;
@@ -21,23 +20,12 @@ export function ScoreSubmitModal({
   attemptCount,
   deviceId,
 }: ScoreSubmitModalProps) {
-  const { user, isLoaded } = useUser();
-  const { openSignIn } = useClerk();
-
   const [playerName, setPlayerName] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [submittedRank, setSubmittedRank] = useState<number | null>(null);
 
   const { data: streak } = useGetStreak(deviceId || "unknown");
-
   const { mutate: submitScore, isPending } = useSubmitLeaderboardScore();
-
-  // Pre-fill name from Clerk user
-  useEffect(() => {
-    if (user && isLoaded && !playerName) {
-      setPlayerName(user.firstName ?? user.username ?? user.fullName ?? "");
-    }
-  }, [user, isLoaded]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -45,11 +33,7 @@ export function ScoreSubmitModal({
 
     submitScore(
       {
-        data: {
-          sessionId,
-          playerName: playerName.trim(),
-          clerkUserId: user?.id,
-        },
+        data: { sessionId, playerName: playerName.trim() },
       },
       {
         onSuccess: (entry) => {
@@ -58,10 +42,6 @@ export function ScoreSubmitModal({
         },
       },
     );
-  };
-
-  const handleSignIn = () => {
-    openSignIn();
   };
 
   return (
@@ -82,7 +62,6 @@ export function ScoreSubmitModal({
             transition={{ type: "spring", damping: 28, stiffness: 300 }}
             className="relative w-full sm:max-w-md bg-[#08090f] border border-white/10 rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden"
           >
-            {/* Close */}
             <button
               onClick={onClose}
               className="absolute top-4 right-4 text-white/30 hover:text-white/70 transition-colors z-10"
@@ -147,20 +126,15 @@ export function ScoreSubmitModal({
                   </p>
 
                   <form onSubmit={handleSubmit} className="space-y-3">
-                    <div className="relative">
-                      <input
-                        type="text"
-                        value={playerName}
-                        onChange={(e) => setPlayerName(e.target.value.slice(0, 32))}
-                        placeholder="Your display name"
-                        maxLength={32}
-                        className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 font-mono text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-primary/50 focus:bg-primary/5 transition-colors"
-                        autoFocus
-                      />
-                      {user && (
-                        <Star size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-primary opacity-60" />
-                      )}
-                    </div>
+                    <input
+                      type="text"
+                      value={playerName}
+                      onChange={(e) => setPlayerName(e.target.value.slice(0, 32))}
+                      placeholder="Your display name"
+                      maxLength={32}
+                      className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 font-mono text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-primary/50 focus:bg-primary/5 transition-colors"
+                      autoFocus
+                    />
 
                     <button
                       type="submit"
@@ -168,32 +142,9 @@ export function ScoreSubmitModal({
                       className="w-full py-3 rounded-lg bg-primary hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed font-mono font-bold text-sm text-primary-foreground transition-colors flex items-center justify-center gap-2"
                     >
                       <Trophy size={15} />
-                      {isPending ? "Submitting…" : user ? "Submit (verified)" : "Submit score"}
+                      {isPending ? "Submitting…" : "Submit score"}
                     </button>
                   </form>
-
-                  {/* Clerk sign-in prompt */}
-                  {!user && isLoaded && (
-                    <div className="pt-1">
-                      <div className="flex items-center gap-3 my-3">
-                        <div className="flex-1 h-px bg-white/8" />
-                        <span className="text-[10px] font-mono text-white/25 uppercase tracking-widest">or</span>
-                        <div className="flex-1 h-px bg-white/8" />
-                      </div>
-                      <button
-                        type="button"
-                        onClick={handleSignIn}
-                        className="w-full py-2.5 rounded-lg border border-white/10 bg-white/3 hover:bg-white/8 font-mono text-sm text-white/60 hover:text-white transition-colors flex items-center justify-center gap-2"
-                      >
-                        <LogIn size={14} />
-                        Sign in with Replit / GitHub
-                        <span className="text-[10px] bg-primary/20 text-primary px-1.5 py-0.5 rounded font-bold">✓ verified</span>
-                      </button>
-                      <p className="text-center text-[10px] text-white/25 font-mono mt-2">
-                        Verified players get a badge on the leaderboard
-                      </p>
-                    </div>
-                  )}
 
                   <button
                     onClick={onClose}

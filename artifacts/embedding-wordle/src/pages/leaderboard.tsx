@@ -85,7 +85,7 @@ export default function Leaderboard() {
         <p className="text-center text-xs text-white/20 font-mono mt-6">
           {tab === "daily"
             ? "Solve today's puzzle and submit your name to appear here"
-            : "Sign in and submit after each endless game to climb the ranks"}
+            : "Solve an endless puzzle and submit your score to climb the ranks"}
         </p>
       </div>
     </Layout>
@@ -100,7 +100,7 @@ function RankBadge({ rank }: { rank: number }) {
 }
 
 type DailyEntry = { rank: number; playerName: string; isVerified: boolean; attemptCount: number; solvedAt: string };
-type EndlessEntry = { rank: number; playerName: string; isVerified: boolean; gamesPlayed: number; totalGuesses: number; avgGuesses: number; lastPlayedAt: string };
+type EndlessEntry = { rank: number; username: string; gamesPlayed: number; totalGuesses: number; avgGuesses: number; lastPlayedAt: string };
 
 function DailyBoard({ entries }: { entries: DailyEntry[] }) {
   if (entries.length === 0) {
@@ -114,7 +114,6 @@ function DailyBoard({ entries }: { entries: DailyEntry[] }) {
 
   return (
     <div className="divide-y divide-white/5">
-      {/* Column header */}
       <div className="flex items-center justify-between px-5 py-2.5 bg-white/2">
         <span className="text-[10px] font-mono text-white/25 uppercase tracking-widest">Player</span>
         <span className="text-[10px] font-mono text-white/25 uppercase tracking-widest">Guesses</span>
@@ -158,14 +157,13 @@ function EndlessBoard({ entries }: { entries: EndlessEntry[] }) {
       <div className="p-12 text-center space-y-3">
         <Infinity className="text-white/20 mx-auto mb-2" size={32} />
         <p className="text-white/40 font-mono">No endless scores yet.</p>
-        <p className="text-white/25 font-mono text-sm">Sign in and play endless mode — submit after each solve to track your stats!</p>
+        <p className="text-white/25 font-mono text-sm">Play endless mode and submit after each solve to track your stats!</p>
       </div>
     );
   }
 
   return (
     <div className="divide-y divide-white/5">
-      {/* Column header */}
       <div className="flex items-center justify-between px-5 py-2.5 bg-white/2">
         <span className="text-[10px] font-mono text-white/25 uppercase tracking-widest">Player</span>
         <div className="flex items-center gap-6 text-right">
@@ -184,14 +182,7 @@ function EndlessBoard({ entries }: { entries: EndlessEntry[] }) {
               <RankBadge rank={entry.rank} />
             </div>
             <div>
-              <div className="font-mono font-medium text-white flex items-center gap-1.5">
-                {entry.playerName}
-                {entry.isVerified && (
-                  <span title="Verified account">
-                    <BadgeCheck size={14} className="text-primary shrink-0" />
-                  </span>
-                )}
-              </div>
+              <div className="font-mono font-medium text-white">{entry.username}</div>
               <div className="text-xs text-white/35 font-mono mt-0.5">
                 Last played {formatDistanceToNow(new Date(entry.lastPlayedAt))} ago
               </div>

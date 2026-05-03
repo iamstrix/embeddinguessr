@@ -94,13 +94,11 @@ export interface LeaderboardEntry {
 export interface LeaderboardSubmitRequest {
   sessionId: string;
   playerName: string;
-  clerkUserId?: string;
 }
 
 export interface EndlessLeaderboardEntry {
   rank: number;
-  playerName: string;
-  isVerified: boolean;
+  username: string;
   gamesPlayed: number;
   totalGuesses: number;
   avgGuesses: number;
@@ -108,8 +106,10 @@ export interface EndlessLeaderboardEntry {
 }
 
 export interface EndlessSubmitRequest {
-  clerkUserId: string;
-  playerName: string;
+  /** Display name / account identifier. Auto-registers on first use. */
+  username: string;
+  /** Password for this account. Must match on subsequent submissions. */
+  password: string;
   guessCount: number;
 }
 

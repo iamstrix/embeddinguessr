@@ -97,8 +97,7 @@ export const CreateEndlessPuzzleResponse = zod.object({
  */
 export const GetEndlessLeaderboardResponseItem = zod.object({
   rank: zod.number(),
-  playerName: zod.string(),
-  isVerified: zod.boolean(),
+  username: zod.string(),
   gamesPlayed: zod.number(),
   totalGuesses: zod.number(),
   avgGuesses: zod.number(),
@@ -109,19 +108,26 @@ export const GetEndlessLeaderboardResponse = zod.array(
 );
 
 /**
- * Records a completed endless game for a signed-in player. Requires Clerk authentication.
+ * Records a completed endless game. Registers the player if username is new, or verifies password if returning. Returns updated leaderboard entry.
  * @summary Submit an endless mode score
  */
 export const SubmitEndlessScoreBody = zod.object({
-  clerkUserId: zod.string(),
-  playerName: zod.string(),
+  username: zod
+    .string()
+    .describe(
+      "Display name \/ account identifier. Auto-registers on first use.",
+    ),
+  password: zod
+    .string()
+    .describe(
+      "Password for this account. Must match on subsequent submissions.",
+    ),
   guessCount: zod.number(),
 });
 
 export const SubmitEndlessScoreResponse = zod.object({
   rank: zod.number(),
-  playerName: zod.string(),
-  isVerified: zod.boolean(),
+  username: zod.string(),
   gamesPlayed: zod.number(),
   totalGuesses: zod.number(),
   avgGuesses: zod.number(),
@@ -168,13 +174,12 @@ export const GetLeaderboardResponseItem = zod.object({
 export const GetLeaderboardResponse = zod.array(GetLeaderboardResponseItem);
 
 /**
- * Attaches a player name and optional Clerk user ID to a solved session. Idempotent — returns existing entry if already submitted.
+ * Attaches a player name to a solved session. Idempotent — returns existing entry if already submitted.
  * @summary Submit score to leaderboard
  */
 export const SubmitLeaderboardScoreBody = zod.object({
   sessionId: zod.string(),
   playerName: zod.string(),
-  clerkUserId: zod.string().optional(),
 });
 
 export const SubmitLeaderboardScoreResponse = zod.object({

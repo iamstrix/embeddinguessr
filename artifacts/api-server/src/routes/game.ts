@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
-import { eq, desc, count, avg, sum, max, and, sql } from "drizzle-orm";
-import { getAuth } from "@clerk/express";
-import { db, puzzlesTable, sessionsTable, wordEmbeddingsTable, streaksTable, endlessScoresTable } from "@workspace/db";
+import { eq, count, avg, sum, max, and, sql } from "drizzle-orm";
+import bcrypt from "bcryptjs";
+import { db, puzzlesTable, sessionsTable, wordEmbeddingsTable, streaksTable, endlessScoresTable, appUsersTable } from "@workspace/db";
 import {
   SubmitGuessBody,
   CreateSessionBody,
@@ -132,22 +132,21 @@ router.post("/game/endless", async (req, res): Promise<void> => {
 router.get("/game/endless/leaderboard", async (req, res): Promise<void> => {
   const rows = await db
     .select({
-      clerkUserId: endlessScoresTable.clerkUserId,
-      playerName: sql<string>`(array_agg(${endlessScoresTable.playerName} ORDER BY ${endlessScoresTable.createdAt} DESC))[1]`,
+      appUserId: endlessScoresTable.appUserId,
+      username: sql<string>`(array_agg(${endlessScoresTable.username} ORDER BY ${endlessScoresTable.createdAt} DESC))[1]`,
       gamesPlayed: count(),
       totalGuesses: sum(endlessScoresTable.guessCount),
       avgGuesses: avg(endlessScoresTable.guessCount),
       lastPlayedAt: max(endlessScoresTable.createdAt),
     })
     .from(endlessScoresTable)
-    .groupBy(endlessScoresTable.clerkUserId)
+    .groupBy(endlessScoresTable.appUserId)
     .orderBy(avg(endlessScoresTable.guessCount))
     .limit(20);
 
   const entries = rows.map((r, i) => ({
     rank: i + 1,
-    playerName: r.playerName,
-    isVerified: true,
+    username: r.username,
     gamesPlayed: Number(r.gamesPlayed),
     totalGuesses: Number(r.totalGuesses ?? 0),
     avgGuesses: parseFloat(Number(r.avgGuesses ?? 0).toFixed(2)),
@@ -158,52 +157,74 @@ router.get("/game/endless/leaderboard", async (req, res): Promise<void> => {
 });
 
 router.post("/game/endless/leaderboard/submit", async (req, res): Promise<void> => {
-  const auth = getAuth(req as any);
-  const authUserId = auth?.userId;
-
-  const { clerkUserId, playerName, guessCount } = req.body as {
-    clerkUserId: string;
-    playerName: string;
+  const { username, password, guessCount } = req.body as {
+    username: string;
+    password: string;
     guessCount: number;
   };
 
-  if (!authUserId || authUserId !== clerkUserId) {
-    res.status(401).json({ error: "Authentication required to submit endless scores" });
+  const trimmedUsername = username?.trim().toLowerCase();
+
+  if (!trimmedUsername || !password || typeof guessCount !== "number" || guessCount < 1) {
+    res.status(400).json({ error: "username, password and guessCount are required" });
     return;
   }
 
-  if (!playerName?.trim() || typeof guessCount !== "number" || guessCount < 1) {
-    res.status(400).json({ error: "playerName and guessCount are required" });
+  if (trimmedUsername.length < 2 || trimmedUsername.length > 24) {
+    res.status(400).json({ error: "Username must be 2–24 characters" });
     return;
   }
 
+  // Find or create user
+  const [existingUser] = await db
+    .select()
+    .from(appUsersTable)
+    .where(eq(appUsersTable.username, trimmedUsername));
+
+  let userId: number;
+  if (existingUser) {
+    const valid = await bcrypt.compare(password, existingUser.passwordHash);
+    if (!valid) {
+      res.status(401).json({ error: "Wrong password for this username" });
+      return;
+    }
+    userId = existingUser.id;
+  } else {
+    const hash = await bcrypt.hash(password, 10);
+    const [newUser] = await db
+      .insert(appUsersTable)
+      .values({ username: trimmedUsername, passwordHash: hash })
+      .returning();
+    userId = newUser.id;
+  }
+
+  // Record this game's score
   await db.insert(endlessScoresTable).values({
-    clerkUserId: authUserId,
-    playerName: playerName.trim().slice(0, 32),
+    appUserId: userId,
+    username: trimmedUsername,
     guessCount,
   });
 
-  // Return the player's updated aggregate stats with rank
+  // Aggregate and rank
   const allRows = await db
     .select({
-      clerkUserId: endlessScoresTable.clerkUserId,
-      playerName: sql<string>`(array_agg(${endlessScoresTable.playerName} ORDER BY ${endlessScoresTable.createdAt} DESC))[1]`,
+      appUserId: endlessScoresTable.appUserId,
+      username: sql<string>`(array_agg(${endlessScoresTable.username} ORDER BY ${endlessScoresTable.createdAt} DESC))[1]`,
       gamesPlayed: count(),
       totalGuesses: sum(endlessScoresTable.guessCount),
       avgGuesses: avg(endlessScoresTable.guessCount),
       lastPlayedAt: max(endlessScoresTable.createdAt),
     })
     .from(endlessScoresTable)
-    .groupBy(endlessScoresTable.clerkUserId)
+    .groupBy(endlessScoresTable.appUserId)
     .orderBy(avg(endlessScoresTable.guessCount));
 
-  const rank = allRows.findIndex((r) => r.clerkUserId === authUserId) + 1;
-  const playerRow = allRows.find((r) => r.clerkUserId === authUserId);
+  const rank = allRows.findIndex((r) => r.appUserId === userId) + 1;
+  const playerRow = allRows.find((r) => r.appUserId === userId);
 
   res.json({
     rank,
-    playerName: playerRow?.playerName ?? playerName.trim(),
-    isVerified: true,
+    username: trimmedUsername,
     gamesPlayed: Number(playerRow?.gamesPlayed ?? 1),
     totalGuesses: Number(playerRow?.totalGuesses ?? guessCount),
     avgGuesses: parseFloat(Number(playerRow?.avgGuesses ?? guessCount).toFixed(2)),
@@ -456,10 +477,9 @@ router.get("/game/leaderboard", async (req, res): Promise<void> => {
 });
 
 router.post("/game/leaderboard/submit", async (req, res): Promise<void> => {
-  const { sessionId, playerName, clerkUserId } = req.body as {
+  const { sessionId, playerName } = req.body as {
     sessionId: string;
     playerName: string;
-    clerkUserId?: string;
   };
 
   if (!sessionId || !playerName?.trim()) {
