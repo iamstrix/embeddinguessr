@@ -15,22 +15,12 @@ import {
   generatePuzzle,
   getRandomPuzzleSet,
   projectTo3D,
-  reduceTo3D,
-  type PcaParams,
+  getGlobalPcaParams,
 } from "../lib/embeddings";
 import { randomUUID } from "crypto";
 
 const router: IRouter = Router();
 
-function getPcaParams(puzzle: { pcaParams: unknown; embeddingVectors: unknown }): PcaParams {
-  if (puzzle.pcaParams) return puzzle.pcaParams as PcaParams;
-  // Fallback: recompute PCA from stored embedding vectors for old puzzles
-  const embeddingVectors = puzzle.embeddingVectors as Record<string, number[]>;
-  const words = Object.keys(embeddingVectors);
-  const vectors = words.map((w) => embeddingVectors[w]);
-  const { pcaParams } = reduceTo3D(vectors, words);
-  return pcaParams;
-}
 
 router.post("/game/endless", async (req, res): Promise<void> => {
   if (!isModelReady()) {
@@ -138,7 +128,7 @@ router.post("/game/guess", async (req, res): Promise<void> => {
   if (isCorrect) {
     x = targetX; y = targetY; z = targetZ;
   } else {
-    const pcaParams = getPcaParams(puzzle);
+    const pcaParams = getGlobalPcaParams();
     const pos = projectTo3D(guessVec, pcaParams);
     x = pos.x; y = pos.y; z = pos.z;
   }
@@ -258,7 +248,7 @@ router.post("/game/session/:sessionId/submit", async (req, res): Promise<void> =
   if (isCorrect) {
     x = targetX; y = targetY; z = targetZ;
   } else {
-    const pcaParams = getPcaParams(puzzle);
+    const pcaParams = getGlobalPcaParams();
     const pos = projectTo3D(guessVec, pcaParams);
     x = pos.x; y = pos.y; z = pos.z;
   }

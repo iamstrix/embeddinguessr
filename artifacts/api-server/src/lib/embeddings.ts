@@ -6,6 +6,7 @@ let pipeline: ((task: string, model: string) => Promise<EmbeddingFunction>) | nu
 let embeddingPipeline: EmbeddingFunction | null = null;
 let modelReady = false;
 let modelLoading = false;
+let globalPcaParams: PcaParams | null = null;
 
 async function loadPipeline() {
   if (modelLoading || modelReady) return;
@@ -17,6 +18,7 @@ async function loadPipeline() {
     embeddingPipeline = await pipeline("feature-extraction", "Xenova/all-MiniLM-L6-v2");
     modelReady = true;
     logger.info("Embedding model ready");
+    await computeGlobalPca();
     await initializeDailyPuzzle();
   } catch (err) {
     logger.error({ err }, "Failed to load embedding model");
@@ -26,6 +28,11 @@ async function loadPipeline() {
 
 export function isModelReady() {
   return modelReady;
+}
+
+export function getGlobalPcaParams(): PcaParams {
+  if (!globalPcaParams) throw new Error("Global PCA not ready");
+  return globalPcaParams;
 }
 
 export async function getEmbedding(text: string): Promise<number[]> {
@@ -41,9 +48,7 @@ export async function getEmbeddings(texts: string[]): Promise<number[][]> {
 }
 
 export function cosineSimilarity(a: number[], b: number[]): number {
-  let dot = 0;
-  let normA = 0;
-  let normB = 0;
+  let dot = 0, normA = 0, normB = 0;
   for (let i = 0; i < a.length; i++) {
     dot += a[i] * b[i];
     normA += a[i] * a[i];
@@ -62,10 +67,7 @@ export interface PcaParams {
   scaleZ: number;
 }
 
-export function reduceTo3D(
-  vectors: number[][],
-  labels: string[]
-): { points: Array<{ word: string; x: number; y: number; z: number }>; pcaParams: PcaParams } {
+function computePcaFromVectors(vectors: number[][]): PcaParams {
   const n = vectors.length;
   const dim = vectors[0].length;
 
@@ -86,8 +88,8 @@ export function reduceTo3D(
   }
 
   const powerIteration = (matrix: number[][], initVec?: number[]): number[] => {
-    let vec = initVec ?? Array.from({ length: dim }, () => Math.random() - 0.5);
-    for (let iter = 0; iter < 100; iter++) {
+    let vec = initVec ?? Array.from({ length: dim }, (_, i) => (i % 3 === 0 ? 1 : -1) * 0.5);
+    for (let iter = 0; iter < 200; iter++) {
       const newVec = new Array(dim).fill(0);
       for (let i = 0; i < dim; i++) {
         for (let j = 0; j < dim; j++) {
@@ -95,6 +97,7 @@ export function reduceTo3D(
         }
       }
       const norm = Math.sqrt(newVec.reduce((s, x) => s + x * x, 0));
+      if (norm === 0) break;
       vec = newVec.map((x) => x / norm);
     }
     return vec;
@@ -112,31 +115,22 @@ export function reduceTo3D(
 
   const pc1 = powerIteration(cov);
   const cov2 = deflate(cov, pc1);
-  const pc2 = powerIteration(cov2, pc1.map((x) => -x + 0.1));
+  const pc2 = powerIteration(cov2, pc1.map((x) => -x));
   const cov3 = deflate(cov2, pc2);
-  const pc3 = powerIteration(cov3, pc2.map((x) => x + 0.1));
+  const pc3 = powerIteration(cov3, pc2.map((x) => -x));
 
-  const project = (v: number[], pc: number[]) =>
-    v.reduce((s, val, i) => s + val * pc[i], 0);
-
+  const dot = (a: number[], b: number[]) => a.reduce((s, v, i) => s + v * b[i], 0);
   const rawCoords = centered.map((v) => ({
-    x: project(v, pc1),
-    y: project(v, pc2),
-    z: project(v, pc3),
+    x: dot(v, pc1),
+    y: dot(v, pc2),
+    z: dot(v, pc3),
   }));
 
   const scaleX = Math.max(...rawCoords.map((c) => Math.abs(c.x))) || 1;
   const scaleY = Math.max(...rawCoords.map((c) => Math.abs(c.y))) || 1;
   const scaleZ = Math.max(...rawCoords.map((c) => Math.abs(c.z))) || 1;
 
-  const points = labels.map((word, i) => ({
-    word,
-    x: rawCoords[i].x / scaleX,
-    y: rawCoords[i].y / scaleY,
-    z: rawCoords[i].z / scaleZ,
-  }));
-
-  return { points, pcaParams: { mean, pc1, pc2, pc3, scaleX, scaleY, scaleZ } };
+  return { mean, pc1, pc2, pc3, scaleX, scaleY, scaleZ };
 }
 
 export function projectTo3D(vec: number[], pcaParams: PcaParams): { x: number; y: number; z: number } {
@@ -148,6 +142,46 @@ export function projectTo3D(vec: number[], pcaParams: PcaParams): { x: number; y
     y: dot(centered, pc2) / scaleY,
     z: dot(centered, pc3) / scaleZ,
   };
+}
+
+// Large, diverse reference vocabulary so PCA axes capture the full
+// shape of semantic space — not just the 4 puzzle words.
+const REFERENCE_VOCABULARY = [
+  // Nature & elements
+  "tree", "water", "fire", "earth", "sky", "mountain", "ocean", "river", "forest",
+  "desert", "cloud", "rain", "wind", "snow", "sun", "moon", "flower", "grass", "stone", "cave",
+  // Animals
+  "dog", "cat", "bird", "fish", "horse", "lion", "whale", "snake", "elephant", "wolf",
+  "eagle", "dolphin", "tiger", "rabbit", "bear", "spider", "shark", "butterfly", "cow", "fox",
+  // Human & social
+  "love", "war", "peace", "family", "friend", "king", "queen", "child", "soldier", "teacher",
+  "doctor", "artist", "hero", "villain", "leader", "mother", "father", "servant", "hunter", "merchant",
+  // Emotions & abstract
+  "happy", "sad", "angry", "afraid", "joy", "grief", "hope", "dream", "memory", "truth",
+  "freedom", "justice", "power", "beauty", "wisdom", "chaos", "order", "mystery", "silence", "darkness",
+  // Science & technology
+  "atom", "energy", "computer", "light", "gravity", "chemistry", "virus", "robot", "electricity", "medicine",
+  "telescope", "rocket", "engine", "bridge", "weapon", "tool", "clock", "map", "ship", "wheel",
+  // Arts & culture
+  "music", "painting", "poetry", "cinema", "dance", "theater", "sculpture", "novel", "song", "rhythm",
+  "color", "canvas", "instrument", "camera", "keyboard", "library", "stage", "broadcast", "festival", "monument",
+  // Food & agriculture
+  "bread", "sugar", "salt", "fruit", "meat", "wine", "coffee", "honey", "chocolate", "rice",
+  "wheat", "corn", "apple", "milk", "butter", "vegetable", "spice", "feast", "hunger", "harvest",
+  // Sports & activity
+  "running", "swimming", "football", "tennis", "climbing", "hunting", "fishing", "boxing", "archery", "race",
+  // Space & cosmos
+  "star", "galaxy", "planet", "universe", "infinity", "comet", "asteroid", "black hole", "nebula", "orbit",
+  // Materials & objects
+  "gold", "iron", "wood", "glass", "diamond", "silk", "sand", "ice", "smoke", "shadow",
+  "crown", "sword", "shield", "ring", "mirror", "lantern", "coin", "throne", "gate", "tower",
+];
+
+async function computeGlobalPca() {
+  logger.info(`Computing global PCA on ${REFERENCE_VOCABULARY.length} reference words...`);
+  const vectors = await getEmbeddings(REFERENCE_VOCABULARY);
+  globalPcaParams = computePcaFromVectors(vectors);
+  logger.info("Global PCA ready");
 }
 
 export function getTemperature(distance: number): "freezing" | "cold" | "cool" | "warm" | "hot" | "correct" {
@@ -179,18 +213,25 @@ const PUZZLE_SETS: Array<{ target: string; clues: string[] }> = [
 
 export async function generatePuzzle(puzzleSet: { target: string; clues: string[] }, date?: string) {
   const { db, puzzlesTable } = await import("@workspace/db");
+  const pca = getGlobalPcaParams();
 
   const allWords = [...puzzleSet.clues, puzzleSet.target];
   const vectors = await getEmbeddings(allWords);
-  const { points, pcaParams } = reduceTo3D(vectors, allWords);
+
+  const embeddingVectors: Record<string, number[]> = {};
+  allWords.forEach((w, i) => { embeddingVectors[w] = vectors[i]; });
+
+  // Project every word through the global PCA
+  const points = allWords.map((word, i) => ({
+    word,
+    ...projectTo3D(vectors[i], pca),
+  }));
 
   const clues = puzzleSet.clues.map((word) => {
     const pt = points.find((p) => p.word === word)!;
     return { word: pt.word, x: pt.x, y: pt.y, z: pt.z };
   });
   const targetPt = points.find((p) => p.word === puzzleSet.target)!;
-  const embeddingVectors: Record<string, number[]> = {};
-  allWords.forEach((w, i) => { embeddingVectors[w] = vectors[i]; });
 
   const [puzzle] = await db.insert(puzzlesTable).values({
     date: date ?? new Date().toISOString(),
@@ -200,7 +241,7 @@ export async function generatePuzzle(puzzleSet: { target: string; clues: string[
     targetZ: String(targetPt.z),
     clues,
     embeddingVectors,
-    pcaParams,
+    pcaParams: pca,
   }).returning();
 
   return puzzle;
@@ -226,7 +267,6 @@ async function initializeDailyPuzzle() {
   );
   const puzzleSet = PUZZLE_SETS[dayOfYear % PUZZLE_SETS.length];
   await generatePuzzle(puzzleSet, today);
-
   logger.info({ date: today, target: puzzleSet.target }, "Daily puzzle created");
 }
 
