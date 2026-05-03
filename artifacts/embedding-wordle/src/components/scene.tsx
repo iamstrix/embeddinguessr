@@ -343,7 +343,7 @@ function Scene3D({ clues, target, guesses, solved, modelReady, hintWords, hintPh
       ))}
       {showPullGuesses && <BhPullSpheres3D guesses={guesses} targetPos={targetPos3D} />}
 
-      <OrbitControls makeDefault autoRotate={!solved && autoRotate !== false} autoRotateSpeed={0.5} enableDamping dampingFactor={0.05} />
+      <OrbitControls makeDefault autoRotate={!solved && autoRotate !== false} autoRotateSpeed={0.15} enableDamping dampingFactor={0.05} />
     </Canvas>
   );
 }
@@ -715,14 +715,14 @@ export function Scene({ clues, target, guesses, solved, modelReady, hintWords, h
   );
 
   const tooltip = (
-    <div className="absolute bottom-4 left-4 flex flex-col gap-1 pointer-events-none select-none">
+    <div className="absolute right-4 top-1/2 -translate-y-1/2 flex flex-col gap-2 pointer-events-none select-none items-end">
       <div className="flex items-center gap-1.5">
-        <kbd className="text-[10px] font-mono text-white/40 bg-white/5 border border-white/10 rounded px-1 py-0.5 leading-none">R</kbd>
         <span className="text-[10px] font-mono text-white/30">{autoRotate ? 'auto-rotate on' : 'auto-rotate off'}</span>
+        <kbd className="text-[10px] font-mono text-white/40 bg-white/5 border border-white/10 rounded px-1 py-0.5 leading-none">R</kbd>
       </div>
       <div className="flex items-center gap-1.5">
-        <kbd className="text-[10px] font-mono text-white/40 bg-white/5 border border-white/10 rounded px-1 py-0.5 leading-none">S</kbd>
         <span className="text-[10px] font-mono text-white/30">{showSimilarity ? 'similarity on' : 'similarity off'}</span>
+        <kbd className="text-[10px] font-mono text-white/40 bg-white/5 border border-white/10 rounded px-1 py-0.5 leading-none">S</kbd>
       </div>
     </div>
   );
