@@ -142,7 +142,7 @@ export function EndlessScoreSubmitModal({
                     Close
                   </button>
                 </motion.div>
-              ) : !isLoaded ? null : !user ? (
+              ) : !user ? (
                 /* Not signed in — login gate */
                 <div className="space-y-4 text-center">
                   <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-white/5 border border-white/10 text-white/40 mb-1">
