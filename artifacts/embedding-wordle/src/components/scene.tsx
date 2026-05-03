@@ -241,14 +241,14 @@ function BhExplosion3D({ position }: { position: [number, number, number] }) {
     const t = clock.getElapsedTime() - startRef.current;
     const update = (mesh: THREE.Mesh | null, mat: THREE.MeshBasicMaterial | null, off: number) => {
       if (!mesh || !mat) return;
-      const p = ((t + off) % 0.8) / 0.8;
+      const p = ((t + off) % 8) / 8;
       const s = Math.max(0.001, (1 - p) * 11);
       mesh.scale.set(s, s, 1);
       mat.opacity = 0.3 + p * 0.65;
     };
     update(m1.current, mat1.current, 0);
-    update(m2.current, mat2.current, 0.27);
-    update(m3.current, mat3.current, 0.54);
+    update(m2.current, mat2.current, 2.67);
+    update(m3.current, mat3.current, 5.33);
   });
   const ring = (ref: React.RefObject<THREE.Mesh | null>, matRef: React.RefObject<THREE.MeshBasicMaterial | null>, col: string) => (
     <mesh ref={ref} position={position} rotation={[Math.PI / 2, 0, 0]}>
@@ -569,12 +569,12 @@ function Scene2D({ clues, target, guesses, solved, hintWords, hintPhase, bhPhase
                 <>
                   {/* Vertical breathing ellipse — slower than solar (4s vs 1.9s) */}
                   <ellipse cx={cx} cy={cy} rx={22} ry={5} fill="none" stroke="#7c3aed" strokeWidth={1.5} opacity={0.5}>
-                    <animate attributeName="ry" values="5;22;5" dur="4s" repeatCount="indefinite" />
-                    <animate attributeName="opacity" values="0.3;0.72;0.3" dur="4s" repeatCount="indefinite" />
+                    <animate attributeName="ry" values="5;22;5" dur="40s" repeatCount="indefinite" />
+                    <animate attributeName="opacity" values="0.3;0.72;0.3" dur="40s" repeatCount="indefinite" />
                   </ellipse>
                   <ellipse cx={cx} cy={cy} rx={16} ry={4} fill="none" stroke="#a855f7" strokeWidth={1} opacity={0.3}>
-                    <animate attributeName="ry" values="4;16;4" dur="4s" begin="2s" repeatCount="indefinite" />
-                    <animate attributeName="opacity" values="0.15;0.5;0.15" dur="4s" begin="2s" repeatCount="indefinite" />
+                    <animate attributeName="ry" values="4;16;4" dur="40s" begin="20s" repeatCount="indefinite" />
+                    <animate attributeName="opacity" values="0.15;0.5;0.15" dur="40s" begin="20s" repeatCount="indefinite" />
                   </ellipse>
                 </>
               )}
@@ -601,9 +601,9 @@ function Scene2D({ clues, target, guesses, solved, hintWords, hintPhase, bhPhase
           [0, 0.27, 0.54].map((delay, i) => (
             <circle key={i} cx={targetProj.cx} cy={targetProj.cy} r={140}
               fill="none" stroke={i === 1 ? "#7c3aed" : "#a855f7"} strokeWidth={1.5} opacity={0}>
-              <animate attributeName="r" from="140" to="0" dur="0.8s" begin={`${delay}s`} repeatCount="indefinite" />
-              <animate attributeName="opacity" from="0.4" to="1" dur="0.8s" begin={`${delay}s`} repeatCount="indefinite" />
-              <animate attributeName="stroke-width" from="1" to="6" dur="0.8s" begin={`${delay}s`} repeatCount="indefinite" />
+              <animate attributeName="r" from="140" to="0" dur="8s" begin={`${delay}s`} repeatCount="indefinite" />
+              <animate attributeName="opacity" from="0.4" to="1" dur="8s" begin={`${delay}s`} repeatCount="indefinite" />
+              <animate attributeName="stroke-width" from="1" to="6" dur="8s" begin={`${delay}s`} repeatCount="indefinite" />
             </circle>
           ))
         )}
