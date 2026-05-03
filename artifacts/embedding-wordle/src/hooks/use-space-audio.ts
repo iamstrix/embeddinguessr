@@ -27,9 +27,10 @@ declare global {
 }
 
 export function useSpaceAudio() {
-  const playerRef     = useRef<YTPlayer | null>(null);
-  const startedRef    = useRef(false);
-  const pendingPlay   = useRef(false);
+  const playerRef      = useRef<YTPlayer | null>(null);
+  const playerReadyRef = useRef(false);   // true only after onReady fires
+  const startedRef     = useRef(false);
+  const pendingPlay    = useRef(false);
   const [muted, setMuted]     = useState(false);
   const [started, setStarted] = useState(false);
   const [volume, setVolumeState] = useState(75);
@@ -65,6 +66,7 @@ export function useSpaceAudio() {
         },
         events: {
           onReady: () => {
+            playerReadyRef.current = true;
             playerRef.current!.setVolume(75);
             // If the user already clicked before the player was ready, start now
             if (pendingPlay.current) {
@@ -111,10 +113,10 @@ export function useSpaceAudio() {
       startedRef.current = true;
       setStarted(true);
 
-      if (playerRef.current) {
+      if (playerRef.current && playerReadyRef.current) {
         playerRef.current.playVideo();
       } else {
-        // Player not ready yet — flag it so onReady picks it up
+        // Player not ready yet — onReady will pick this up
         pendingPlay.current = true;
       }
 
