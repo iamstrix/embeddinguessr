@@ -109,11 +109,17 @@ export default function Home() {
         body: JSON.stringify({ puzzleId: puzzle.id, excludeWords }),
       });
       const data = await res.json();
-      setHintWords(data.hints ?? []);
+      const hints = data.hints ?? [];
+      setHintWords(hints);
       setHintPhase("shooting");
-      sounds.playSolarHint();
-      setTimeout(() => setHintPhase("pulsing"), 1500);
-      setTimeout(() => setHintPhase("revealed"), 2350);
+      setTimeout(() => {
+        setHintPhase("pulsing");
+        sounds.playSolarHit();
+      }, 1500);
+      setTimeout(() => {
+        setHintPhase("revealed");
+        hints.forEach((_: unknown, i: number) => sounds.playHintReveal(i * 220));
+      }, 2350);
     } catch {
       setHintPhase("idle");
     }

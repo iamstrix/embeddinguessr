@@ -1,6 +1,6 @@
 import { Canvas, useFrame } from "@react-three/fiber";
 import { OrbitControls, Stars, Html, Line } from "@react-three/drei";
-import { useRef, useState, useEffect, useMemo, Component } from "react";
+import { useRef, useState, useEffect, useMemo, useCallback, Component } from "react";
 import type { ReactNode } from "react";
 import * as THREE from "three";
 import type { EmbeddingPoint, GuessResult } from "@workspace/api-client-react";
@@ -19,6 +19,30 @@ const TEMP_COLORS: Record<string, string> = {
   cool: "#00ced1", cold: "#4682b4", freezing: "#b0e0e6",
 };
 const TEMP_COLORS_2D = TEMP_COLORS;
+
+// Format partial BH word: "p_is_n_r" → "p _ i s _ n _ r"
+function formatPartialWord(word: string) {
+  return word.split('').join(' ');
+}
+
+// Fetch a short definition from the Free Dictionary API (cached)
+const defCache = new Map<string, string>();
+function useWordDefinition(word: string | null) {
+  const [def, setDef] = useState<string | null>(null);
+  useEffect(() => {
+    if (!word || word === '?' || word === 'Loading...') { setDef(null); return; }
+    if (defCache.has(word)) { setDef(defCache.get(word)!); return; }
+    setDef(null);
+    fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word)}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        const d: string | undefined = data?.[0]?.meanings?.[0]?.definitions?.[0]?.definition;
+        if (d) { defCache.set(word, d); setDef(d); }
+      })
+      .catch(() => {});
+  }, [word]);
+  return def;
+}
 
 function checkWebGLSupport() {
   try {
@@ -41,9 +65,10 @@ class CanvasErrorBoundary extends Component<{ children: ReactNode; fallback: Rea
 
 // ─── 3D Components ───────────────────────────────────────────────────────────
 
-function PointSphere({ position, color, label, sublabel, pulse = false, size = 0.15, isTarget = false }: {
+function PointSphere({ position, color, label, sublabel, pulse = false, size = 0.15, isTarget = false, onHover, onHoverEnd }: {
   position: [number, number, number]; color: string; label?: string; sublabel?: string;
   pulse?: boolean; size?: number; isTarget?: boolean;
+  onHover?: (word: string) => void; onHoverEnd?: () => void;
 }) {
   const meshRef = useRef<THREE.Mesh>(null);
   const matRef = useRef<THREE.MeshStandardMaterial>(null);
@@ -56,7 +81,10 @@ function PointSphere({ position, color, label, sublabel, pulse = false, size = 0
     }
   });
   return (
-    <group position={position}>
+    <group position={position}
+      onPointerEnter={(e) => { e.stopPropagation(); label && label !== '?' && onHover?.(label); }}
+      onPointerLeave={() => onHoverEnd?.()}
+    >
       <mesh ref={meshRef}>
         <sphereGeometry args={[size, 32, 32]} />
         <meshStandardMaterial ref={matRef} color={color} emissive={color}
@@ -260,11 +288,14 @@ function BhExplosion3D({ position }: { position: [number, number, number] }) {
   return <>{ring(m1, mat1, "#a855f7")}{ring(m2, mat2, "#7c3aed")}{ring(m3, mat3, "#c084fc")}</>;
 }
 
-function Scene3D({ clues, target, guesses, solved, modelReady, hintWords, hintPhase, bhPhase, bhEnergy, bhRevealedWord, autoRotate, showSimilarity }: {
+function Scene3D({ clues, target, guesses, solved, modelReady, hintWords, hintPhase, bhPhase, bhEnergy, bhRevealedWord, autoRotate, showSimilarity, onWordHover }: {
   clues: EmbeddingPoint[]; target: EmbeddingPoint | null; guesses: GuessResult[];
   solved: boolean; modelReady: boolean; hintWords?: HintWord[]; hintPhase?: HintPhase;
   bhPhase?: BhPhase; bhEnergy?: number; bhRevealedWord?: BhRevealedWord | null; autoRotate?: boolean; showSimilarity?: boolean;
+  onWordHover?: (word: string | null) => void;
 }) {
+  const handleHover = (word: string) => onWordHover?.(word);
+  const handleHoverEnd = () => onWordHover?.(null);
   if (!modelReady) {
     return (
       <Canvas camera={{ position: [0, 0, 8] }} gl={{ antialias: true }}>
@@ -297,24 +328,25 @@ function Scene3D({ clues, target, guesses, solved, modelReady, hintWords, hintPh
         <><SonarRing3D position={targetPos3D} delay={0} /><SonarRing3D position={targetPos3D} delay={0.67} /><SonarRing3D position={targetPos3D} delay={1.33} /></>
       )}
       {hintPhase === "revealed" && hintWords?.map((hw, i) => (
-        <PointSphere key={`hint-${i}`} position={[hw.x * 3, hw.y * 3, hw.z * 3]} color="#FFD700" label={hw.word} size={0.13} />
+        <PointSphere key={`hint-${i}`} position={[hw.x * 3, hw.y * 3, hw.z * 3]} color="#FFD700" label={hw.word} size={0.13}
+          onHover={handleHover} onHoverEnd={handleHoverEnd} />
       ))}
 
       {/* Black hole system */}
       {target && bhPhase === "shooting" && <BhProjectile3D targetPos={targetPos3D} />}
       {target && bhPhase === "pulling" && <BhPullSpheres3D guesses={guesses} targetPos={targetPos3D} />}
       {target && (bhPhase === "exploding" || bhPhase === "revealed") && <BhExplosion3D position={targetPos3D} />}
-      {/* bhRevealedWord is shown on the target node above */}
 
       {/* Target */}
       {target && (() => {
         const isBhActive = bhPhase === "pulling" || bhPhase === "exploding";
         const color = solved ? TEMP_COLORS.correct : isBhActive ? "#3b0764" : "#ffffff";
         const correctWord = guesses.find(g => g.isCorrect)?.word;
+        const solvedWord = correctWord ?? target.word;
         return (
-          <PointSphere position={targetPos3D} color={color} label={solved ? (correctWord ?? target.word) : "?"}
-            pulse={!solved && !isBhActive}
-            size={solved ? 0.3 : 0.2} isTarget={true} />
+          <PointSphere position={targetPos3D} color={color} label={solved ? solvedWord : "?"}
+            pulse={!solved && !isBhActive} size={solved ? 0.3 : 0.2} isTarget={true}
+            onHover={solved ? handleHover : undefined} onHoverEnd={handleHoverEnd} />
         );
       })()}
 
@@ -322,7 +354,7 @@ function Scene3D({ clues, target, guesses, solved, modelReady, hintWords, hintPh
       {bhPhase === "revealed" && bhRevealedWord && (
         <PointSphere
           position={[targetPos3D[0] + 1.0, targetPos3D[1] + 1.0, targetPos3D[2]]}
-          color="#a855f7" label={bhRevealedWord.word} size={0.15}
+          color="#a855f7" label={formatPartialWord(bhRevealedWord.word)} size={0.15}
         />
       )}
 
@@ -330,7 +362,7 @@ function Scene3D({ clues, target, guesses, solved, modelReady, hintWords, hintPh
         <PointSphere key={`clue-${i}`} position={[clue.x * 3, clue.y * 3, clue.z * 3]}
           color="#888888" label={clue.word}
           sublabel={showSimilarity && clue.similarityScore != null ? `${(clue.similarityScore * 100).toFixed(1)}%` : undefined}
-          size={0.15} />
+          size={0.15} onHover={handleHover} onHoverEnd={handleHoverEnd} />
       ))}
       {target && <Connectors clues={clues} target={target} />}
 
@@ -339,7 +371,8 @@ function Scene3D({ clues, target, guesses, solved, modelReady, hintWords, hintPh
         <PointSphere key={`guess-${i}`} position={[g.x * 3, g.y * 3, g.z * 3]}
           color={TEMP_COLORS[g.temperature] || "#ffffff"} label={g.word}
           sublabel={showSimilarity ? `${(g.similarityScore * 100).toFixed(1)}%` : undefined}
-          size={g.isCorrect ? 0.3 : 0.12} pulse={g.isCorrect} />
+          size={g.isCorrect ? 0.3 : 0.12} pulse={g.isCorrect}
+          onHover={handleHover} onHoverEnd={handleHoverEnd} />
       ))}
       {showPullGuesses && <BhPullSpheres3D guesses={guesses} targetPos={targetPos3D} />}
 
@@ -379,10 +412,11 @@ function useRafProgress(active: boolean, duration: number, holdWhen?: boolean) {
   return progress;
 }
 
-function Scene2D({ clues, target, guesses, solved, hintWords, hintPhase, bhPhase, bhEnergy, bhRevealedWord, showSimilarity }: {
+function Scene2D({ clues, target, guesses, solved, hintWords, hintPhase, bhPhase, bhEnergy, bhRevealedWord, showSimilarity, onWordHover }: {
   clues: EmbeddingPoint[]; target: EmbeddingPoint | null; guesses: GuessResult[];
   solved: boolean; hintWords?: HintWord[]; hintPhase?: HintPhase;
   bhPhase?: BhPhase; bhEnergy?: number; bhRevealedWord?: BhRevealedWord | null; showSimilarity?: boolean;
+  onWordHover?: (word: string | null) => void;
 }) {
   const W = 700; const H = 520; const PAD = 60;
 
@@ -504,10 +538,11 @@ function Scene2D({ clues, target, guesses, solved, hintWords, hintPhase, bhPhase
           const color = TEMP_COLORS_2D[g.temperature] || "#fff";
           const depthScale = 0.85 + (g.z + 1) * 0.15;
           const r = (g.isCorrect ? 11 : 6) * depthScale;
-          // fade out as they approach target during pull
           const opacity = pullGuesses ? Math.max(0, 1 - bhPullProgress * 0.8) : 0.82;
           return (
-            <g key={`g-${i}`}>
+            <g key={`g-${i}`} style={{ cursor: 'default' }}
+              onMouseEnter={() => onWordHover?.(g.word)}
+              onMouseLeave={() => onWordHover?.(null)}>
               <circle cx={cx} cy={cy} r={r} fill={color} fillOpacity={opacity} />
               {!pullGuesses && (
                 <>
@@ -531,7 +566,9 @@ function Scene2D({ clues, target, guesses, solved, hintWords, hintPhase, bhPhase
         {clues.map((clue, i) => {
           const { cx, cy } = project(clue.x, clue.y, clue.z);
           return (
-            <g key={`c-${i}`}>
+            <g key={`c-${i}`}
+              onMouseEnter={() => onWordHover?.(clue.word)}
+              onMouseLeave={() => onWordHover?.(null)}>
               <circle cx={cx} cy={cy} r={10} fill="#777" fillOpacity={0.9} />
               <text x={cx} y={cy - 16} textAnchor="middle" fill="white" fontSize={11} fontFamily="monospace" fontWeight="bold">{clue.word}</text>
               {showSimilarity && clue.similarityScore != null && (
@@ -547,7 +584,9 @@ function Scene2D({ clues, target, guesses, solved, hintWords, hintPhase, bhPhase
         {hintPhase === "revealed" && hintWords?.map((hw, i) => {
           const { cx, cy } = project(hw.x, hw.y, hw.z);
           return (
-            <g key={`hint-${i}`}>
+            <g key={`hint-${i}`}
+              onMouseEnter={() => onWordHover?.(hw.word)}
+              onMouseLeave={() => onWordHover?.(null)}>
               <circle cx={cx} cy={cy} r={8} fill="#FFD700" fillOpacity={0.22} stroke="#FFD700" strokeWidth={1.5} strokeOpacity={0.8} />
               <circle cx={cx} cy={cy} r={3.5} fill="#FFD700" fillOpacity={0.9} />
               <text x={cx} y={cy - 13} textAnchor="middle" fill="#FFD700" fontSize={10} fontFamily="monospace" fontWeight="bold" opacity={0.95}>{hw.word}</text>
@@ -566,8 +605,8 @@ function Scene2D({ clues, target, guesses, solved, hintWords, hintPhase, bhPhase
               <circle cx={rx} cy={ry2} r={16} fill="#7c3aed" fillOpacity={0.18} stroke="#a855f7" strokeWidth={1.5} strokeOpacity={0.9} />
               <circle cx={rx} cy={ry2} r={7} fill="#a855f7" fillOpacity={0.92} />
               <text x={rx} y={ry2 - 22} textAnchor="middle" fill="#c084fc"
-                fontSize={11} fontFamily="monospace" fontWeight="bold" letterSpacing={3}>
-                {bhRevealedWord.word}
+                fontSize={13} fontFamily="monospace" fontWeight="bold" letterSpacing={6}>
+                {formatPartialWord(bhRevealedWord.word)}
               </text>
             </g>
           );
@@ -693,6 +732,9 @@ export function Scene({ clues, target, guesses, solved, modelReady, hintWords, h
 }) {
   const [webglSupported, setWebglSupported] = useState<boolean | null>(null);
   const [autoRotate, setAutoRotate] = useState(true);
+  const [hoveredWord, setHoveredWord] = useState<string | null>(null);
+  const definition = useWordDefinition(hoveredWord);
+  const handleWordHover = useCallback((word: string | null) => setHoveredWord(word), []);
 
   useEffect(() => { setWebglSupported(checkWebGLSupport()); }, []);
 
@@ -711,11 +753,25 @@ export function Scene({ clues, target, guesses, solved, modelReady, hintWords, h
   const scene2d = (
     <Scene2D clues={clues} target={target} guesses={guesses} solved={solved}
       hintWords={hintWords} hintPhase={hintPhase} bhPhase={bhPhase} bhEnergy={bhEnergy}
-      bhRevealedWord={bhRevealedWord} showSimilarity={showSimilarity} />
+      bhRevealedWord={bhRevealedWord} showSimilarity={showSimilarity} onWordHover={handleWordHover} />
   );
+
+  // Definition tooltip — shown whenever a word is hovered and we have a definition
+  const defOverlay = hoveredWord && definition ? (
+    <div className="absolute bottom-8 left-1/2 -translate-x-1/2 max-w-xs w-full px-4 pointer-events-none">
+      <div className="bg-black/80 backdrop-blur-md border border-white/10 rounded-xl px-4 py-3 shadow-2xl">
+        <div className="text-[11px] font-mono font-bold text-white/80 mb-1">{hoveredWord}</div>
+        <div className="text-[10px] font-mono text-white/50 leading-relaxed italic">{definition}</div>
+      </div>
+    </div>
+  ) : null;
 
   const tooltip = (
     <div className="absolute right-4 top-1/2 -translate-y-1/2 flex flex-col gap-2 pointer-events-none select-none items-end">
+      <div className="flex items-center gap-1.5">
+        <span className="text-[10px] font-mono text-white/30">pan view</span>
+        <kbd className="text-[10px] font-mono text-white/40 bg-white/5 border border-white/10 rounded px-1 py-0.5 leading-none">Ctrl+drag</kbd>
+      </div>
       <div className="flex items-center gap-1.5">
         <span className="text-[10px] font-mono text-white/30">{autoRotate ? 'auto-rotate on' : 'auto-rotate off'}</span>
         <kbd className="text-[10px] font-mono text-white/40 bg-white/5 border border-white/10 rounded px-1 py-0.5 leading-none">R</kbd>
@@ -735,6 +791,7 @@ export function Scene({ clues, target, guesses, solved, modelReady, hintWords, h
             <div className="text-blue-300 font-mono text-sm animate-pulse">Loading embedding model...</div>
           </div>
         )}
+        {defOverlay}
       </div>
     );
   }
@@ -744,9 +801,11 @@ export function Scene({ clues, target, guesses, solved, modelReady, hintWords, h
       <CanvasErrorBoundary fallback={scene2d}>
         <Scene3D clues={clues} target={target} guesses={guesses} solved={solved} modelReady={modelReady}
           hintWords={hintWords} hintPhase={hintPhase} bhPhase={bhPhase} bhEnergy={bhEnergy}
-          bhRevealedWord={bhRevealedWord} autoRotate={autoRotate} showSimilarity={showSimilarity} />
+          bhRevealedWord={bhRevealedWord} autoRotate={autoRotate} showSimilarity={showSimilarity}
+          onWordHover={handleWordHover} />
       </CanvasErrorBoundary>
       {tooltip}
+      {defOverlay}
     </div>
   );
 }

@@ -32,6 +32,7 @@ export function useSpaceAudio() {
   const pendingPlay   = useRef(false);
   const [muted, setMuted]     = useState(false);
   const [started, setStarted] = useState(false);
+  const [volume, setVolumeState] = useState(75);
 
   // ── Bootstrap: hidden container + YT IFrame API script ────────────────────
   useEffect(() => {
@@ -157,5 +158,20 @@ export function useSpaceAudio() {
     });
   }, []);
 
-  return { muted, toggleMute, started };
+  const setVolume = useCallback((v: number) => {
+    const clamped = Math.max(0, Math.min(100, v));
+    setVolumeState(clamped);
+    if (playerRef.current) {
+      if (clamped === 0) {
+        playerRef.current.mute();
+        setMuted(true);
+      } else {
+        playerRef.current.unMute();
+        playerRef.current.setVolume(clamped);
+        setMuted(false);
+      }
+    }
+  }, []);
+
+  return { muted, toggleMute, started, volume, setVolume };
 }
