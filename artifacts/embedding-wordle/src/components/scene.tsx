@@ -41,8 +41,8 @@ class CanvasErrorBoundary extends Component<{ children: ReactNode; fallback: Rea
 
 // ─── 3D Components ───────────────────────────────────────────────────────────
 
-function PointSphere({ position, color, label, pulse = false, size = 0.15, isTarget = false }: {
-  position: [number, number, number]; color: string; label?: string;
+function PointSphere({ position, color, label, sublabel, pulse = false, size = 0.15, isTarget = false }: {
+  position: [number, number, number]; color: string; label?: string; sublabel?: string;
   pulse?: boolean; size?: number; isTarget?: boolean;
 }) {
   const meshRef = useRef<THREE.Mesh>(null);
@@ -64,8 +64,9 @@ function PointSphere({ position, color, label, pulse = false, size = 0.15, isTar
       </mesh>
       {label && (
         <Html position={[0, size * 1.5, 0]} center zIndexRange={[100, 0]}>
-          <div className={`px-2 py-0.5 rounded text-xs font-mono font-bold select-none pointer-events-none whitespace-nowrap ${isTarget ? "bg-primary/20 text-primary border border-primary/50" : "bg-black/50 text-white border border-white/20"}`}>
+          <div className={`px-2 py-0.5 rounded text-xs font-mono font-bold select-none pointer-events-none whitespace-nowrap text-center ${isTarget ? "bg-primary/20 text-primary border border-primary/50" : "bg-black/50 text-white border border-white/20"}`}>
             {label}
+            {sublabel && <div className="text-[9px] font-normal opacity-60 leading-none mt-0.5">{sublabel}</div>}
           </div>
         </Html>
       )}
@@ -327,7 +328,9 @@ function Scene3D({ clues, target, guesses, solved, modelReady, hintWords, hintPh
 
       {clues.map((clue, i) => (
         <PointSphere key={`clue-${i}`} position={[clue.x * 3, clue.y * 3, clue.z * 3]}
-          color="#888888" label={clue.word} size={0.15} />
+          color="#888888" label={clue.word}
+          sublabel={clue.similarityScore != null ? `${(clue.similarityScore * 100).toFixed(1)}%` : undefined}
+          size={0.15} />
       ))}
       {target && <Connectors clues={clues} target={target} />}
 
@@ -521,7 +524,12 @@ function Scene2D({ clues, target, guesses, solved, hintWords, hintPhase, bhPhase
           return (
             <g key={`c-${i}`}>
               <circle cx={cx} cy={cy} r={10} fill="#777" fillOpacity={0.9} />
-              <text x={cx} y={cy - 15} textAnchor="middle" fill="white" fontSize={11} fontFamily="monospace" fontWeight="bold">{clue.word}</text>
+              <text x={cx} y={cy - 16} textAnchor="middle" fill="white" fontSize={11} fontFamily="monospace" fontWeight="bold">{clue.word}</text>
+              {clue.similarityScore != null && (
+                <text x={cx} y={cy - 5} textAnchor="middle" fill="white" fontSize={8} fontFamily="monospace" opacity={0.55}>
+                  {(clue.similarityScore * 100).toFixed(1)}%
+                </text>
+              )}
             </g>
           );
         })}

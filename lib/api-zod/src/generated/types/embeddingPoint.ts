@@ -12,4 +12,6 @@ export interface EmbeddingPoint {
   y: number;
   z: number;
   isClue: boolean;
+  /** Cosine similarity to the target word (0–1). Present for clue words, absent for the target itself. */
+  similarityScore?: number;
 }

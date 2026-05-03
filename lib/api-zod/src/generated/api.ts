@@ -29,6 +29,12 @@ export const GetDailyPuzzleResponse = zod.object({
       y: zod.number(),
       z: zod.number(),
       isClue: zod.boolean(),
+      similarityScore: zod
+        .number()
+        .optional()
+        .describe(
+          "Cosine similarity to the target word (0–1). Present for clue words, absent for the target itself.",
+        ),
     }),
   ),
   target: zod.object({
@@ -37,6 +43,12 @@ export const GetDailyPuzzleResponse = zod.object({
     y: zod.number(),
     z: zod.number(),
     isClue: zod.boolean(),
+    similarityScore: zod
+      .number()
+      .optional()
+      .describe(
+        "Cosine similarity to the target word (0–1). Present for clue words, absent for the target itself.",
+      ),
   }),
   modelReady: zod.boolean(),
 });
@@ -55,6 +67,12 @@ export const CreateEndlessPuzzleResponse = zod.object({
       y: zod.number(),
       z: zod.number(),
       isClue: zod.boolean(),
+      similarityScore: zod
+        .number()
+        .optional()
+        .describe(
+          "Cosine similarity to the target word (0–1). Present for clue words, absent for the target itself.",
+        ),
     }),
   ),
   target: zod.object({
@@ -63,6 +81,12 @@ export const CreateEndlessPuzzleResponse = zod.object({
     y: zod.number(),
     z: zod.number(),
     isClue: zod.boolean(),
+    similarityScore: zod
+      .number()
+      .optional()
+      .describe(
+        "Cosine similarity to the target word (0–1). Present for clue words, absent for the target itself.",
+      ),
   }),
   modelReady: zod.boolean(),
 });

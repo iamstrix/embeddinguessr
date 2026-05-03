@@ -54,11 +54,17 @@ router.post("/game/endless", async (req, res): Promise<void> => {
   try {
     const puzzle = await generatePuzzle();
     const clues = puzzle.clues as Array<{ word: string; x: number; y: number; z: number }>;
+    const embVecs = puzzle.embeddingVectors as Record<string, number[]>;
+    const targetVec = embVecs[puzzle.targetWord];
 
     res.json({
       id: puzzle.id,
       date: puzzle.date,
-      clues: clues.map((c) => ({ ...c, isClue: true })),
+      clues: clues.map((c) => ({
+        ...c,
+        isClue: true,
+        similarityScore: targetVec && embVecs[c.word] ? cosineSimilarity(embVecs[c.word], targetVec) : undefined,
+      })),
       target: {
         word: "?",
         x: parseFloat(puzzle.targetX),
@@ -89,11 +95,17 @@ router.get("/game/daily", async (req, res): Promise<void> => {
   }
 
   const clues = puzzle.clues as Array<{ word: string; x: number; y: number; z: number }>;
+  const embVecs = puzzle.embeddingVectors as Record<string, number[]>;
+  const targetVec = embVecs[puzzle.targetWord];
 
   res.json({
     id: puzzle.id,
     date: puzzle.date,
-    clues: clues.map((c) => ({ ...c, isClue: true })),
+    clues: clues.map((c) => ({
+      ...c,
+      isClue: true,
+      similarityScore: targetVec && embVecs[c.word] ? cosineSimilarity(embVecs[c.word], targetVec) : undefined,
+    })),
     target: {
       word: "?",
       x: parseFloat(puzzle.targetX),

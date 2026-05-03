@@ -212,6 +212,9 @@ components:
           type: number
         isClue:
           type: boolean
+        similarityScore:
+          type: number
+          description: Cosine similarity to the target word (0–1). Present for clue words, absent for the target itself.
       required:
         - word
         - x
