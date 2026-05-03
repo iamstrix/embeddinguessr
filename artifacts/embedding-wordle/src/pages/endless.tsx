@@ -126,14 +126,10 @@ export default function Endless() {
   const triggerBlackHole = useCallback(async () => {
     if (!bhReady || bhPhase !== "idle" || !puzzle || !session) return;
     setBhPhase("shooting");
-    const excludeWords = [
-      ...(session.guesses ?? []).map((g) => g.word),
-      ...hintWords.map((hw) => hw.word),
-    ];
     fetch("/api/game/black-hole", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ puzzleId: puzzle.id, excludeWords }),
+      body: JSON.stringify({ puzzleId: puzzle.id }),
     })
       .then((r) => r.json())
       .then((data) => setBhRevealedWord(data))
@@ -374,9 +370,9 @@ export default function Endless() {
                         <div className="flex items-center justify-between py-2 px-3 rounded-lg bg-purple-500/8 border border-purple-500/20">
                           <div className="flex items-center gap-2">
                             <div className="w-2 h-2 rounded-full bg-purple-400" />
-                            <span className="font-mono text-purple-200 font-bold">{bhRevealedWord.word}</span>
+                            <span className="font-mono text-purple-200 font-bold tracking-widest">{bhRevealedWord.word}</span>
                           </div>
-                          <span className="text-xs font-mono text-purple-400/70">{(bhRevealedWord.similarity * 100).toFixed(1)}%</span>
+                          <span className="text-xs font-mono text-purple-400/50 italic">partial</span>
                         </div>
                       </motion.div>
                     )}

@@ -346,8 +346,22 @@ router.get("/game/stats", async (req, res): Promise<void> => {
   });
 });
 
+function maskWord(word: string): string {
+  const chars = word.split("");
+  // Always reveal the first letter. Randomly hide ~50% of the rest.
+  // Guarantee at least one hidden letter and at least one revealed beyond the first.
+  const result = chars.map((ch, i) => (i === 0 ? ch : Math.random() < 0.5 ? "_" : ch));
+  // If every letter after the first is revealed, hide a random middle one
+  const hiddenCount = result.filter((c) => c === "_").length;
+  if (hiddenCount === 0 && word.length > 1) {
+    const idx = 1 + Math.floor(Math.random() * (word.length - 1));
+    result[idx] = "_";
+  }
+  return result.join("");
+}
+
 router.post("/game/black-hole", async (req, res): Promise<void> => {
-  const { puzzleId, excludeWords = [] } = req.body as { puzzleId: number; excludeWords: string[] };
+  const { puzzleId } = req.body as { puzzleId: number };
 
   const [puzzle] = await db.select().from(puzzlesTable).where(eq(puzzlesTable.id, puzzleId));
   if (!puzzle) { res.status(404).json({ error: "Puzzle not found" }); return; }
@@ -359,26 +373,7 @@ router.post("/game/black-hole", async (req, res): Promise<void> => {
     .limit(1);
   if (!targetEmb) { res.status(500).json({ error: "Target not in library" }); return; }
 
-  const targetVec = targetEmb.embedding as number[];
-  const clueWords = (puzzle.clues as Array<{ word: string }>).map((c) => c.word);
-  const excludeSet = new Set([...excludeWords, ...clueWords, puzzle.targetWord]);
-
-  const allWords = await db.select().from(wordEmbeddingsTable);
-
-  const best = allWords
-    .filter((w) => !excludeSet.has(w.word))
-    .map((w) => ({
-      word: w.word,
-      x: w.x,
-      y: w.y,
-      z: w.z,
-      similarity: cosineSimilarity(w.embedding as number[], targetVec),
-    }))
-    .sort((a, b) => b.similarity - a.similarity)[0];
-
-  if (!best) { res.status(500).json({ error: "No word available" }); return; }
-
-  res.json(best);
+  res.json({ word: maskWord(puzzle.targetWord), x: targetEmb.x, y: targetEmb.y, z: targetEmb.z });
 });
 
 router.post("/game/hint", async (req, res): Promise<void> => {

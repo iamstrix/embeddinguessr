@@ -232,21 +232,31 @@ function BhPullSpheres3D({ guesses, targetPos }: { guesses: GuessResult[]; targe
 }
 
 function BhExplosion3D({ position }: { position: [number, number, number] }) {
-  const meshRef = useRef<THREE.Mesh>(null);
-  const matRef = useRef<THREE.MeshBasicMaterial>(null);
+  const m1 = useRef<THREE.Mesh>(null); const mat1 = useRef<THREE.MeshBasicMaterial>(null);
+  const m2 = useRef<THREE.Mesh>(null); const mat2 = useRef<THREE.MeshBasicMaterial>(null);
+  const m3 = useRef<THREE.Mesh>(null); const mat3 = useRef<THREE.MeshBasicMaterial>(null);
   const startRef = useRef<number | null>(null);
   useFrame(({ clock }) => {
     if (startRef.current === null) startRef.current = clock.getElapsedTime();
-    const p = Math.min((clock.getElapsedTime() - startRef.current) / 0.7, 1);
-    if (meshRef.current) { const s = 1 + p * 12; meshRef.current.scale.set(s, s, 1); }
-    if (matRef.current) matRef.current.opacity = Math.max(0, 1 - p);
+    const t = clock.getElapsedTime() - startRef.current;
+    const update = (mesh: THREE.Mesh | null, mat: THREE.MeshBasicMaterial | null, off: number) => {
+      if (!mesh || !mat) return;
+      const p = ((t + off) % 0.8) / 0.8;
+      const s = Math.max(0.001, (1 - p) * 11);
+      mesh.scale.set(s, s, 1);
+      mat.opacity = 0.3 + p * 0.65;
+    };
+    update(m1.current, mat1.current, 0);
+    update(m2.current, mat2.current, 0.27);
+    update(m3.current, mat3.current, 0.54);
   });
-  return (
-    <mesh ref={meshRef} position={position} rotation={[Math.PI / 2, 0, 0]}>
+  const ring = (ref: React.RefObject<THREE.Mesh | null>, matRef: React.RefObject<THREE.MeshBasicMaterial | null>, col: string) => (
+    <mesh ref={ref} position={position} rotation={[Math.PI / 2, 0, 0]}>
       <torusGeometry args={[0.3, 0.04, 8, 64]} />
-      <meshBasicMaterial ref={matRef} color="#a855f7" transparent opacity={1} />
+      <meshBasicMaterial ref={matRef} color={col} transparent opacity={0.6} />
     </mesh>
   );
+  return <>{ring(m1, mat1, "#a855f7")}{ring(m2, mat2, "#7c3aed")}{ring(m3, mat3, "#c084fc")}</>;
 }
 
 function Scene3D({ clues, target, guesses, solved, modelReady, hintWords, hintPhase, bhPhase, bhEnergy, bhRevealedWord }: {
@@ -293,19 +303,20 @@ function Scene3D({ clues, target, guesses, solved, modelReady, hintWords, hintPh
       {target && bhPhase === "shooting" && <BhProjectile3D targetPos={targetPos3D} />}
       {target && bhPhase === "pulling" && <BhPullSpheres3D guesses={guesses} targetPos={targetPos3D} />}
       {target && (bhPhase === "exploding" || bhPhase === "revealed") && <BhExplosion3D position={targetPos3D} />}
-      {bhPhase === "revealed" && bhRevealedWord && (
-        <PointSphere position={[bhRevealedWord.x * 3, bhRevealedWord.y * 3, bhRevealedWord.z * 3]}
-          color="#a855f7" label={bhRevealedWord.word} size={0.15} />
-      )}
+      {/* bhRevealedWord is shown on the target node above */}
 
       {/* Target */}
-      {target && (
-        <PointSphere position={targetPos3D}
-          color={solved ? TEMP_COLORS.correct : (bhPhase === "pulling" || bhPhase === "exploding") ? "#3b0764" : "#ffffff"}
-          label={solved ? target.word : "?"}
-          pulse={!solved && bhPhase !== "pulling" && bhPhase !== "exploding"}
-          size={solved ? 0.3 : 0.2} isTarget={true} />
-      )}
+      {target && (() => {
+        const isBhActive = bhPhase === "pulling" || bhPhase === "exploding";
+        const isBhRevealed = bhPhase === "revealed";
+        const color = solved ? TEMP_COLORS.correct : isBhRevealed ? "#a855f7" : isBhActive ? "#3b0764" : "#ffffff";
+        const label = solved ? target.word : isBhRevealed && bhRevealedWord ? bhRevealedWord.word : "?";
+        return (
+          <PointSphere position={targetPos3D} color={color} label={label}
+            pulse={!solved && !isBhActive && !isBhRevealed}
+            size={solved || isBhRevealed ? 0.3 : 0.2} isTarget={true} />
+        );
+      })()}
 
       {clues.map((clue, i) => (
         <PointSphere key={`clue-${i}`} position={[clue.x * 3, clue.y * 3, clue.z * 3]}
@@ -520,28 +531,21 @@ function Scene2D({ clues, target, guesses, solved, hintWords, hintPhase, bhPhase
           );
         })}
 
-        {/* BH revealed word */}
-        {bhPhase === "revealed" && bhRevealedWord && (() => {
-          const { cx, cy } = project(bhRevealedWord.x, bhRevealedWord.y, bhRevealedWord.z);
-          return (
-            <g>
-              <circle cx={cx} cy={cy} r={9} fill="#7c3aed" fillOpacity={0.25} stroke="#a855f7" strokeWidth={1.5} strokeOpacity={0.9} />
-              <circle cx={cx} cy={cy} r={4} fill="#a855f7" fillOpacity={0.95} />
-              <text x={cx} y={cy - 14} textAnchor="middle" fill="#c084fc" fontSize={11} fontFamily="monospace" fontWeight="bold" opacity={0.95}>{bhRevealedWord.word}</text>
-            </g>
-          );
-        })()}
+        {/* BH revealed word shown on the target node below */}
 
         {/* Target */}
         {target && targetProj && (() => {
           const { cx, cy } = targetProj;
           const isBhActive = bhPhase === "pulling" || bhPhase === "exploding";
-          const color = solved ? "#ffd700" : isBhActive ? "#7c3aed" : "#ffffff";
-          const label = solved ? target.word : isBhActive ? "✦" : "?";
+          const isBhRevealed = bhPhase === "revealed" && !!bhRevealedWord;
+          const color = solved ? "#ffd700" : isBhRevealed ? "#a855f7" : isBhActive ? "#7c3aed" : "#ffffff";
+          const label = solved ? target.word : isBhRevealed ? bhRevealedWord!.word : isBhActive ? "✦" : "?";
+          const outerR = isBhRevealed ? 20 : 16;
+          const innerR = isBhRevealed ? 10 : 8;
           return (
             <g>
-              <circle cx={cx} cy={cy} r={16} fill={color} fillOpacity={0.12} stroke={color} strokeWidth={1.5} />
-              <circle cx={cx} cy={cy} r={8} fill={color} fillOpacity={isBhActive ? 0.5 : 0.9} />
+              <circle cx={cx} cy={cy} r={outerR} fill={color} fillOpacity={0.12} stroke={color} strokeWidth={1.5} />
+              <circle cx={cx} cy={cy} r={innerR} fill={color} fillOpacity={isBhActive ? 0.5 : 0.9} />
               {isBhActive && (
                 <>
                   <ellipse cx={cx} cy={cy} rx={18} ry={6} fill="none" stroke="#7c3aed" strokeWidth={1.2} opacity={0.6}>
@@ -552,7 +556,11 @@ function Scene2D({ clues, target, guesses, solved, hintWords, hintPhase, bhPhase
                   </ellipse>
                 </>
               )}
-              <text x={cx} y={cy - 22} textAnchor="middle" fill={color} fontSize={12} fontFamily="monospace" fontWeight="bold">{label}</text>
+              <text x={cx} y={cy - (outerR + 6)} textAnchor="middle" fill={color}
+                fontSize={isBhRevealed ? 13 : 12} fontFamily="monospace" fontWeight="bold"
+                letterSpacing={isBhRevealed ? 3 : 0}>
+                {label}
+              </text>
             </g>
           );
         })()}
@@ -568,13 +576,14 @@ function Scene2D({ clues, target, guesses, solved, hintWords, hintPhase, bhPhase
           ))
         )}
 
-        {/* BH explosion ring */}
+        {/* BH implosion rings — collapse inward from large radius to 0 */}
         {targetProj && (bhPhase === "exploding" || bhPhase === "revealed") && (
-          [0, 0.25, 0.5].map((delay, i) => (
-            <circle key={i} cx={targetProj.cx} cy={targetProj.cy} r={10}
-              fill="none" stroke="#a855f7" strokeWidth={2} opacity={0}>
-              <animate attributeName="r" from="10" to="160" dur="0.75s" begin={`${delay}s`} repeatCount="indefinite" />
-              <animate attributeName="opacity" from="0.9" to="0" dur="0.75s" begin={`${delay}s`} repeatCount="indefinite" />
+          [0, 0.27, 0.54].map((delay, i) => (
+            <circle key={i} cx={targetProj.cx} cy={targetProj.cy} r={140}
+              fill="none" stroke={i === 1 ? "#7c3aed" : "#a855f7"} strokeWidth={1.5} opacity={0}>
+              <animate attributeName="r" from="140" to="0" dur="0.8s" begin={`${delay}s`} repeatCount="indefinite" />
+              <animate attributeName="opacity" from="0.4" to="1" dur="0.8s" begin={`${delay}s`} repeatCount="indefinite" />
+              <animate attributeName="stroke-width" from="1" to="6" dur="0.8s" begin={`${delay}s`} repeatCount="indefinite" />
             </circle>
           ))
         )}
