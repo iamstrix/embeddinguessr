@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "Embedding Wordle"
+version = "1.0.0"
+id = "artifacts/embedding-wordle"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 19393
+
+[services.development]
+run = "pnpm --filter @workspace/embedding-wordle run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/embedding-wordle", "run", "build" ]
+publicDir = "artifacts/embedding-wordle/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "19393"
+BASE_PATH = "/"

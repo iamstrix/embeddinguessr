@@ -5,18 +5,32 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import type {
+  MutationFunction,
   QueryFunction,
   QueryKey,
+  UseMutationOptions,
+  UseMutationResult,
   UseQueryOptions,
   UseQueryResult,
 } from "@tanstack/react-query";
 
-import type { HealthStatus } from "./api.schemas";
+import type {
+  CreateSessionRequest,
+  ErrorResponse,
+  GameSession,
+  GameStats,
+  GuessRequest,
+  GuessResult,
+  HealthStatus,
+  LeaderboardEntry,
+  Puzzle,
+  SessionGuessResult,
+} from "./api.schemas";
 
 import { customFetch } from "../custom-fetch";
-import type { ErrorType } from "../custom-fetch";
+import type { ErrorType, BodyType } from "../custom-fetch";
 
 type AwaitedInput<T> = PromiseLike<T> | T;
 
@@ -92,6 +106,496 @@ export function useHealthCheck<
   request?: SecondParameter<typeof customFetch>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getHealthCheckQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * Returns today's puzzle with clue words and their 3D positions. Target position is revealed but word is hidden.
+ * @summary Get today's puzzle
+ */
+export const getGetDailyPuzzleUrl = () => {
+  return `/api/game/daily`;
+};
+
+export const getDailyPuzzle = async (
+  options?: RequestInit,
+): Promise<Puzzle> => {
+  return customFetch<Puzzle>(getGetDailyPuzzleUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetDailyPuzzleQueryKey = () => {
+  return [`/api/game/daily`] as const;
+};
+
+export const getGetDailyPuzzleQueryOptions = <
+  TData = Awaited<ReturnType<typeof getDailyPuzzle>>,
+  TError = ErrorType<ErrorResponse>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getDailyPuzzle>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetDailyPuzzleQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getDailyPuzzle>>> = ({
+    signal,
+  }) => getDailyPuzzle({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getDailyPuzzle>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetDailyPuzzleQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getDailyPuzzle>>
+>;
+export type GetDailyPuzzleQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Get today's puzzle
+ */
+
+export function useGetDailyPuzzle<
+  TData = Awaited<ReturnType<typeof getDailyPuzzle>>,
+  TError = ErrorType<ErrorResponse>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getDailyPuzzle>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetDailyPuzzleQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * Submit a word guess for the current puzzle. Returns the 3D position of the guess, distance to target, and a temperature hint.
+ * @summary Submit a guess
+ */
+export const getSubmitGuessUrl = () => {
+  return `/api/game/guess`;
+};
+
+export const submitGuess = async (
+  guessRequest: GuessRequest,
+  options?: RequestInit,
+): Promise<GuessResult> => {
+  return customFetch<GuessResult>(getSubmitGuessUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(guessRequest),
+  });
+};
+
+export const getSubmitGuessMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof submitGuess>>,
+    TError,
+    { data: BodyType<GuessRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof submitGuess>>,
+  TError,
+  { data: BodyType<GuessRequest> },
+  TContext
+> => {
+  const mutationKey = ["submitGuess"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof submitGuess>>,
+    { data: BodyType<GuessRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return submitGuess(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type SubmitGuessMutationResult = NonNullable<
+  Awaited<ReturnType<typeof submitGuess>>
+>;
+export type SubmitGuessMutationBody = BodyType<GuessRequest>;
+export type SubmitGuessMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Submit a guess
+ */
+export const useSubmitGuess = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof submitGuess>>,
+    TError,
+    { data: BodyType<GuessRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof submitGuess>>,
+  TError,
+  { data: BodyType<GuessRequest> },
+  TContext
+> => {
+  return useMutation(getSubmitGuessMutationOptions(options));
+};
+
+/**
+ * Returns the top players ranked by fewest guesses to solve the puzzle
+ * @summary Get top scores
+ */
+export const getGetLeaderboardUrl = () => {
+  return `/api/game/leaderboard`;
+};
+
+export const getLeaderboard = async (
+  options?: RequestInit,
+): Promise<LeaderboardEntry[]> => {
+  return customFetch<LeaderboardEntry[]>(getGetLeaderboardUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetLeaderboardQueryKey = () => {
+  return [`/api/game/leaderboard`] as const;
+};
+
+export const getGetLeaderboardQueryOptions = <
+  TData = Awaited<ReturnType<typeof getLeaderboard>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getLeaderboard>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetLeaderboardQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getLeaderboard>>> = ({
+    signal,
+  }) => getLeaderboard({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getLeaderboard>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetLeaderboardQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getLeaderboard>>
+>;
+export type GetLeaderboardQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get top scores
+ */
+
+export function useGetLeaderboard<
+  TData = Awaited<ReturnType<typeof getLeaderboard>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getLeaderboard>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetLeaderboardQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * Creates a new game session for the daily puzzle. Returns existing session if one exists for this device.
+ * @summary Create or resume a game session
+ */
+export const getCreateSessionUrl = () => {
+  return `/api/game/session`;
+};
+
+export const createSession = async (
+  createSessionRequest: CreateSessionRequest,
+  options?: RequestInit,
+): Promise<GameSession> => {
+  return customFetch<GameSession>(getCreateSessionUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createSessionRequest),
+  });
+};
+
+export const getCreateSessionMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createSession>>,
+    TError,
+    { data: BodyType<CreateSessionRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createSession>>,
+  TError,
+  { data: BodyType<CreateSessionRequest> },
+  TContext
+> => {
+  const mutationKey = ["createSession"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createSession>>,
+    { data: BodyType<CreateSessionRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createSession(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateSessionMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createSession>>
+>;
+export type CreateSessionMutationBody = BodyType<CreateSessionRequest>;
+export type CreateSessionMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Create or resume a game session
+ */
+export const useCreateSession = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createSession>>,
+    TError,
+    { data: BodyType<CreateSessionRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createSession>>,
+  TError,
+  { data: BodyType<CreateSessionRequest> },
+  TContext
+> => {
+  return useMutation(getCreateSessionMutationOptions(options));
+};
+
+/**
+ * Submit a word guess within a tracked session. Persists guess history and detects win.
+ * @summary Submit a guess in a session
+ */
+export const getSubmitSessionGuessUrl = (sessionId: string) => {
+  return `/api/game/session/${sessionId}/submit`;
+};
+
+export const submitSessionGuess = async (
+  sessionId: string,
+  guessRequest: GuessRequest,
+  options?: RequestInit,
+): Promise<SessionGuessResult> => {
+  return customFetch<SessionGuessResult>(getSubmitSessionGuessUrl(sessionId), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(guessRequest),
+  });
+};
+
+export const getSubmitSessionGuessMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof submitSessionGuess>>,
+    TError,
+    { sessionId: string; data: BodyType<GuessRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof submitSessionGuess>>,
+  TError,
+  { sessionId: string; data: BodyType<GuessRequest> },
+  TContext
+> => {
+  const mutationKey = ["submitSessionGuess"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof submitSessionGuess>>,
+    { sessionId: string; data: BodyType<GuessRequest> }
+  > = (props) => {
+    const { sessionId, data } = props ?? {};
+
+    return submitSessionGuess(sessionId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type SubmitSessionGuessMutationResult = NonNullable<
+  Awaited<ReturnType<typeof submitSessionGuess>>
+>;
+export type SubmitSessionGuessMutationBody = BodyType<GuessRequest>;
+export type SubmitSessionGuessMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Submit a guess in a session
+ */
+export const useSubmitSessionGuess = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof submitSessionGuess>>,
+    TError,
+    { sessionId: string; data: BodyType<GuessRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof submitSessionGuess>>,
+  TError,
+  { sessionId: string; data: BodyType<GuessRequest> },
+  TContext
+> => {
+  return useMutation(getSubmitSessionGuessMutationOptions(options));
+};
+
+/**
+ * Returns aggregate stats for today's puzzle (total players, average guesses, solve rate)
+ * @summary Get game statistics
+ */
+export const getGetGameStatsUrl = () => {
+  return `/api/game/stats`;
+};
+
+export const getGameStats = async (
+  options?: RequestInit,
+): Promise<GameStats> => {
+  return customFetch<GameStats>(getGetGameStatsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetGameStatsQueryKey = () => {
+  return [`/api/game/stats`] as const;
+};
+
+export const getGetGameStatsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getGameStats>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getGameStats>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetGameStatsQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getGameStats>>> = ({
+    signal,
+  }) => getGameStats({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getGameStats>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetGameStatsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getGameStats>>
+>;
+export type GetGameStatsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get game statistics
+ */
+
+export function useGetGameStats<
+  TData = Awaited<ReturnType<typeof getGameStats>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getGameStats>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetGameStatsQueryOptions(options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

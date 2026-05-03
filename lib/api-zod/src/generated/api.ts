@@ -14,3 +14,170 @@ import * as zod from "zod";
 export const HealthCheckResponse = zod.object({
   status: zod.string(),
 });
+
+/**
+ * Returns today's puzzle with clue words and their 3D positions. Target position is revealed but word is hidden.
+ * @summary Get today's puzzle
+ */
+export const GetDailyPuzzleResponse = zod.object({
+  id: zod.number(),
+  date: zod.string(),
+  clues: zod.array(
+    zod.object({
+      word: zod.string(),
+      x: zod.number(),
+      y: zod.number(),
+      z: zod.number(),
+      isClue: zod.boolean(),
+    }),
+  ),
+  target: zod.object({
+    word: zod.string(),
+    x: zod.number(),
+    y: zod.number(),
+    z: zod.number(),
+    isClue: zod.boolean(),
+  }),
+  modelReady: zod.boolean(),
+});
+
+/**
+ * Submit a word guess for the current puzzle. Returns the 3D position of the guess, distance to target, and a temperature hint.
+ * @summary Submit a guess
+ */
+export const SubmitGuessBody = zod.object({
+  word: zod.string(),
+  puzzleId: zod.number(),
+});
+
+export const SubmitGuessResponse = zod.object({
+  word: zod.string(),
+  x: zod.number(),
+  y: zod.number(),
+  z: zod.number(),
+  distanceToTarget: zod.number(),
+  temperature: zod.enum(["freezing", "cold", "cool", "warm", "hot", "correct"]),
+  isCorrect: zod.boolean(),
+  similarityScore: zod.number(),
+});
+
+/**
+ * Returns the top players ranked by fewest guesses to solve the puzzle
+ * @summary Get top scores
+ */
+export const GetLeaderboardResponseItem = zod.object({
+  rank: zod.number(),
+  deviceId: zod.string(),
+  attemptCount: zod.number(),
+  solvedAt: zod.string(),
+});
+export const GetLeaderboardResponse = zod.array(GetLeaderboardResponseItem);
+
+/**
+ * Creates a new game session for the daily puzzle. Returns existing session if one exists for this device.
+ * @summary Create or resume a game session
+ */
+export const CreateSessionBody = zod.object({
+  deviceId: zod.string(),
+  puzzleId: zod.number(),
+});
+
+export const CreateSessionResponse = zod.object({
+  id: zod.string(),
+  puzzleId: zod.number(),
+  deviceId: zod.string(),
+  guesses: zod.array(
+    zod.object({
+      word: zod.string(),
+      x: zod.number(),
+      y: zod.number(),
+      z: zod.number(),
+      distanceToTarget: zod.number(),
+      temperature: zod.enum([
+        "freezing",
+        "cold",
+        "cool",
+        "warm",
+        "hot",
+        "correct",
+      ]),
+      isCorrect: zod.boolean(),
+      similarityScore: zod.number(),
+    }),
+  ),
+  solved: zod.boolean(),
+  attemptCount: zod.number(),
+  createdAt: zod.string(),
+});
+
+/**
+ * Submit a word guess within a tracked session. Persists guess history and detects win.
+ * @summary Submit a guess in a session
+ */
+export const SubmitSessionGuessParams = zod.object({
+  sessionId: zod.coerce.string(),
+});
+
+export const SubmitSessionGuessBody = zod.object({
+  word: zod.string(),
+  puzzleId: zod.number(),
+});
+
+export const SubmitSessionGuessResponse = zod.object({
+  guess: zod.object({
+    word: zod.string(),
+    x: zod.number(),
+    y: zod.number(),
+    z: zod.number(),
+    distanceToTarget: zod.number(),
+    temperature: zod.enum([
+      "freezing",
+      "cold",
+      "cool",
+      "warm",
+      "hot",
+      "correct",
+    ]),
+    isCorrect: zod.boolean(),
+    similarityScore: zod.number(),
+  }),
+  session: zod.object({
+    id: zod.string(),
+    puzzleId: zod.number(),
+    deviceId: zod.string(),
+    guesses: zod.array(
+      zod.object({
+        word: zod.string(),
+        x: zod.number(),
+        y: zod.number(),
+        z: zod.number(),
+        distanceToTarget: zod.number(),
+        temperature: zod.enum([
+          "freezing",
+          "cold",
+          "cool",
+          "warm",
+          "hot",
+          "correct",
+        ]),
+        isCorrect: zod.boolean(),
+        similarityScore: zod.number(),
+      }),
+    ),
+    solved: zod.boolean(),
+    attemptCount: zod.number(),
+    createdAt: zod.string(),
+  }),
+});
+
+/**
+ * Returns aggregate stats for today's puzzle (total players, average guesses, solve rate)
+ * @summary Get game statistics
+ */
+export const GetGameStatsResponse = zod.object({
+  totalPlayers: zod.number(),
+  solvedCount: zod.number(),
+  averageGuesses: zod.number(),
+  solveRate: zod.number(),
+  puzzleDate: zod.string(),
+});

@@ -8,3 +8,86 @@
 export interface HealthStatus {
   status: string;
 }
+
+export interface ErrorResponse {
+  error: string;
+}
+
+export interface EmbeddingPoint {
+  word: string;
+  x: number;
+  y: number;
+  z: number;
+  isClue: boolean;
+}
+
+export interface Puzzle {
+  id: number;
+  date: string;
+  clues: EmbeddingPoint[];
+  target: EmbeddingPoint;
+  modelReady: boolean;
+}
+
+export interface GuessRequest {
+  word: string;
+  puzzleId: number;
+}
+
+export type GuessResultTemperature =
+  (typeof GuessResultTemperature)[keyof typeof GuessResultTemperature];
+
+export const GuessResultTemperature = {
+  freezing: "freezing",
+  cold: "cold",
+  cool: "cool",
+  warm: "warm",
+  hot: "hot",
+  correct: "correct",
+} as const;
+
+export interface GuessResult {
+  word: string;
+  x: number;
+  y: number;
+  z: number;
+  distanceToTarget: number;
+  temperature: GuessResultTemperature;
+  isCorrect: boolean;
+  similarityScore: number;
+}
+
+export interface CreateSessionRequest {
+  deviceId: string;
+  puzzleId: number;
+}
+
+export interface GameSession {
+  id: string;
+  puzzleId: number;
+  deviceId: string;
+  guesses: GuessResult[];
+  solved: boolean;
+  attemptCount: number;
+  createdAt: string;
+}
+
+export interface SessionGuessResult {
+  guess: GuessResult;
+  session: GameSession;
+}
+
+export interface LeaderboardEntry {
+  rank: number;
+  deviceId: string;
+  attemptCount: number;
+  solvedAt: string;
+}
+
+export interface GameStats {
+  totalPlayers: number;
+  solvedCount: number;
+  averageGuesses: number;
+  solveRate: number;
+  puzzleDate: string;
+}

@@ -10,6 +10,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: game
+    description: Embedding Wordle game operations
 paths:
   /healthz:
     get:
@@ -24,6 +26,141 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /game/daily:
+    get:
+      operationId: getDailyPuzzle
+      tags: [game]
+      summary: Get today's puzzle
+      description: Returns today's puzzle with clue words and their 3D positions. Target position is revealed but word is hidden.
+      responses:
+        "200":
+          description: Today's puzzle
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Puzzle"
+        "503":
+          description: Embeddings model not ready yet
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /game/guess:
+    post:
+      operationId: submitGuess
+      tags: [game]
+      summary: Submit a guess
+      description: Submit a word guess for the current puzzle. Returns the 3D position of the guess, distance to target, and a temperature hint.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GuessRequest"
+      responses:
+        "200":
+          description: Guess result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuessResult"
+        "400":
+          description: Invalid word or puzzle not available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /game/leaderboard:
+    get:
+      operationId: getLeaderboard
+      tags: [game]
+      summary: Get top scores
+      description: Returns the top players ranked by fewest guesses to solve the puzzle
+      responses:
+        "200":
+          description: Leaderboard entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LeaderboardEntry"
+
+  /game/session:
+    post:
+      operationId: createSession
+      tags: [game]
+      summary: Create or resume a game session
+      description: Creates a new game session for the daily puzzle. Returns existing session if one exists for this device.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSessionRequest"
+      responses:
+        "200":
+          description: Game session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GameSession"
+
+  /game/session/{sessionId}/submit:
+    post:
+      operationId: submitSessionGuess
+      tags: [game]
+      summary: Submit a guess in a session
+      description: Submit a word guess within a tracked session. Persists guess history and detects win.
+      parameters:
+        - in: path
+          name: sessionId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GuessRequest"
+      responses:
+        "200":
+          description: Guess result with session state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionGuessResult"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Session not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /game/stats:
+    get:
+      operationId: getGameStats
+      tags: [game]
+      summary: Get game statistics
+      description: Returns aggregate stats for today's puzzle (total players, average guesses, solve rate)
+      responses:
+        "200":
+          description: Game statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GameStats"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +171,180 @@ components:
       required:
         - status
 
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+
+    EmbeddingPoint:
+      type: object
+      properties:
+        word:
+          type: string
+        x:
+          type: number
+        y:
+          type: number
+        z:
+          type: number
+        isClue:
+          type: boolean
+      required:
+        - word
+        - x
+        - y
+        - z
+        - isClue
+
+    Puzzle:
+      type: object
+      properties:
+        id:
+          type: integer
+        date:
+          type: string
+        clues:
+          type: array
+          items:
+            $ref: "#/components/schemas/EmbeddingPoint"
+        target:
+          $ref: "#/components/schemas/EmbeddingPoint"
+        modelReady:
+          type: boolean
+      required:
+        - id
+        - date
+        - clues
+        - target
+        - modelReady
+
+    GuessRequest:
+      type: object
+      properties:
+        word:
+          type: string
+        puzzleId:
+          type: integer
+      required:
+        - word
+        - puzzleId
+
+    GuessResult:
+      type: object
+      properties:
+        word:
+          type: string
+        x:
+          type: number
+        y:
+          type: number
+        z:
+          type: number
+        distanceToTarget:
+          type: number
+        temperature:
+          type: string
+          enum: [freezing, cold, cool, warm, hot, correct]
+        isCorrect:
+          type: boolean
+        similarityScore:
+          type: number
+      required:
+        - word
+        - x
+        - y
+        - z
+        - distanceToTarget
+        - temperature
+        - isCorrect
+        - similarityScore
+
+    CreateSessionRequest:
+      type: object
+      properties:
+        deviceId:
+          type: string
+        puzzleId:
+          type: integer
+      required:
+        - deviceId
+        - puzzleId
+
+    GameSession:
+      type: object
+      properties:
+        id:
+          type: string
+        puzzleId:
+          type: integer
+        deviceId:
+          type: string
+        guesses:
+          type: array
+          items:
+            $ref: "#/components/schemas/GuessResult"
+        solved:
+          type: boolean
+        attemptCount:
+          type: integer
+        createdAt:
+          type: string
+      required:
+        - id
+        - puzzleId
+        - deviceId
+        - guesses
+        - solved
+        - attemptCount
+        - createdAt
+
+    SessionGuessResult:
+      type: object
+      properties:
+        guess:
+          $ref: "#/components/schemas/GuessResult"
+        session:
+          $ref: "#/components/schemas/GameSession"
+      required:
+        - guess
+        - session
+
+    LeaderboardEntry:
+      type: object
+      properties:
+        rank:
+          type: integer
+        deviceId:
+          type: string
+        attemptCount:
+          type: integer
+        solvedAt:
+          type: string
+      required:
+        - rank
+        - deviceId
+        - attemptCount
+        - solvedAt
+
+    GameStats:
+      type: object
+      properties:
+        totalPlayers:
+          type: integer
+        solvedCount:
+          type: integer
+        averageGuesses:
+          type: number
+        solveRate:
+          type: number
+        puzzleDate:
+          type: string
+      required:
+        - totalPlayers
+        - solvedCount
+        - averageGuesses
+        - solveRate
+        - puzzleDate

@@ -6,4 +6,15 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from "./createSessionRequest";
+export * from "./embeddingPoint";
+export * from "./errorResponse";
+export * from "./gameSession";
+export * from "./gameStats";
+export * from "./guessRequest";
+export * from "./guessResult";
+export * from "./guessResultTemperature";
 export * from "./healthStatus";
+export * from "./leaderboardEntry";
+export * from "./puzzle";
+export * from "./sessionGuessResult";
