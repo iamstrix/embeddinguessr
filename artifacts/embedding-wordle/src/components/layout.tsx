@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { LayoutDashboard, Trophy, Settings, BarChart2 } from "lucide-react";
+import { LayoutDashboard, Trophy, BarChart2, Infinity } from "lucide-react";
 
 export function FloatingNav() {
   const [location] = useLocation();
@@ -8,6 +8,9 @@ export function FloatingNav() {
     <nav className="fixed top-4 right-4 z-50 flex gap-2">
       <Link href="/" className={`p-2 rounded-full backdrop-blur-md border transition-colors ${location === '/' ? 'bg-primary/20 border-primary text-primary' : 'bg-black/20 border-white/10 text-white/70 hover:bg-black/40 hover:text-white'}`}>
         <LayoutDashboard size={20} />
+      </Link>
+      <Link href="/endless" className={`p-2 rounded-full backdrop-blur-md border transition-colors ${location === '/endless' ? 'bg-primary/20 border-primary text-primary' : 'bg-black/20 border-white/10 text-white/70 hover:bg-black/40 hover:text-white'}`}>
+        <Infinity size={20} />
       </Link>
       <Link href="/leaderboard" className={`p-2 rounded-full backdrop-blur-md border transition-colors ${location === '/leaderboard' ? 'bg-primary/20 border-primary text-primary' : 'bg-black/20 border-white/10 text-white/70 hover:bg-black/40 hover:text-white'}`}>
         <Trophy size={20} />

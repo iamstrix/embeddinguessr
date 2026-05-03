@@ -47,6 +47,26 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /game/endless:
+    post:
+      operationId: createEndlessPuzzle
+      tags: [game]
+      summary: Create a random endless-mode puzzle
+      description: Generates a fresh random puzzle on every call. Intended for endless/practice mode — not the daily challenge.
+      responses:
+        "200":
+          description: A freshly generated random puzzle
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Puzzle"
+        "503":
+          description: Embeddings model not ready yet
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /game/guess:
     post:
       operationId: submitGuess

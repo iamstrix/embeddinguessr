@@ -42,6 +42,32 @@ export const GetDailyPuzzleResponse = zod.object({
 });
 
 /**
+ * Generates a fresh random puzzle on every call. Intended for endless/practice mode — not the daily challenge.
+ * @summary Create a random endless-mode puzzle
+ */
+export const CreateEndlessPuzzleResponse = zod.object({
+  id: zod.number(),
+  date: zod.string(),
+  clues: zod.array(
+    zod.object({
+      word: zod.string(),
+      x: zod.number(),
+      y: zod.number(),
+      z: zod.number(),
+      isClue: zod.boolean(),
+    }),
+  ),
+  target: zod.object({
+    word: zod.string(),
+    x: zod.number(),
+    y: zod.number(),
+    z: zod.number(),
+    isClue: zod.boolean(),
+  }),
+  modelReady: zod.boolean(),
+});
+
+/**
  * Submit a word guess for the current puzzle. Returns the 3D position of the guess, distance to target, and a temperature hint.
  * @summary Submit a guess
  */

@@ -6,6 +6,7 @@ import NotFound from "@/pages/not-found";
 import Home from "@/pages/home";
 import Leaderboard from "@/pages/leaderboard";
 import Stats from "@/pages/stats";
+import Endless from "@/pages/endless";
 
 const queryClient = new QueryClient();
 
@@ -13,6 +14,7 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={Home} />
+      <Route path="/endless" component={Endless} />
       <Route path="/leaderboard" component={Leaderboard} />
       <Route path="/stats" component={Stats} />
       <Route component={NotFound} />

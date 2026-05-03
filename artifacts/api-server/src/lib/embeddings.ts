@@ -154,6 +154,38 @@ const PUZZLE_SETS: Array<{ target: string; clues: string[] }> = [
   { target: "sword", clues: ["shield", "war", "knight"] },
 ];
 
+export async function generatePuzzle(puzzleSet: { target: string; clues: string[] }, date?: string) {
+  const { db, puzzlesTable } = await import("@workspace/db");
+
+  const allWords = [...puzzleSet.clues, puzzleSet.target];
+  const vectors = await getEmbeddings(allWords);
+  const points = reduceTo3D(vectors, allWords);
+
+  const clues = puzzleSet.clues.map((word) => {
+    const pt = points.find((p) => p.word === word)!;
+    return { word: pt.word, x: pt.x, y: pt.y, z: pt.z };
+  });
+  const targetPt = points.find((p) => p.word === puzzleSet.target)!;
+  const embeddingVectors: Record<string, number[]> = {};
+  allWords.forEach((w, i) => { embeddingVectors[w] = vectors[i]; });
+
+  const [puzzle] = await db.insert(puzzlesTable).values({
+    date: date ?? new Date().toISOString(),
+    targetWord: puzzleSet.target,
+    targetX: String(targetPt.x),
+    targetY: String(targetPt.y),
+    targetZ: String(targetPt.z),
+    clues,
+    embeddingVectors,
+  }).returning();
+
+  return puzzle;
+}
+
+export function getRandomPuzzleSet() {
+  return PUZZLE_SETS[Math.floor(Math.random() * PUZZLE_SETS.length)];
+}
+
 async function initializeDailyPuzzle() {
   const { db, puzzlesTable } = await import("@workspace/db");
   const { eq } = await import("drizzle-orm");
@@ -169,27 +201,7 @@ async function initializeDailyPuzzle() {
     (Date.now() - new Date(new Date().getFullYear(), 0, 0).getTime()) / 86400000
   );
   const puzzleSet = PUZZLE_SETS[dayOfYear % PUZZLE_SETS.length];
-  const allWords = [...puzzleSet.clues, puzzleSet.target];
-  const vectors = await getEmbeddings(allWords);
-  const points = reduceTo3D(vectors, allWords);
-
-  const clues = puzzleSet.clues.map((word) => {
-    const pt = points.find((p) => p.word === word)!;
-    return { word: pt.word, x: pt.x, y: pt.y, z: pt.z };
-  });
-  const targetPt = points.find((p) => p.word === puzzleSet.target)!;
-  const embeddingVectors: Record<string, number[]> = {};
-  allWords.forEach((w, i) => { embeddingVectors[w] = vectors[i]; });
-
-  await db.insert(puzzlesTable).values({
-    date: today,
-    targetWord: puzzleSet.target,
-    targetX: String(targetPt.x),
-    targetY: String(targetPt.y),
-    targetZ: String(targetPt.z),
-    clues: clues,
-    embeddingVectors: embeddingVectors,
-  });
+  await generatePuzzle(puzzleSet, today);
 
   logger.info({ date: today, target: puzzleSet.target }, "Daily puzzle created");
 }

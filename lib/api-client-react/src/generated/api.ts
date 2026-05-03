@@ -191,6 +191,88 @@ export function useGetDailyPuzzle<
 }
 
 /**
+ * Generates a fresh random puzzle on every call. Intended for endless/practice mode — not the daily challenge.
+ * @summary Create a random endless-mode puzzle
+ */
+export const getCreateEndlessPuzzleUrl = () => {
+  return `/api/game/endless`;
+};
+
+export const createEndlessPuzzle = async (
+  options?: RequestInit,
+): Promise<Puzzle> => {
+  return customFetch<Puzzle>(getCreateEndlessPuzzleUrl(), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getCreateEndlessPuzzleMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createEndlessPuzzle>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createEndlessPuzzle>>,
+  TError,
+  void,
+  TContext
+> => {
+  const mutationKey = ["createEndlessPuzzle"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createEndlessPuzzle>>,
+    void
+  > = () => {
+    return createEndlessPuzzle(requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateEndlessPuzzleMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createEndlessPuzzle>>
+>;
+
+export type CreateEndlessPuzzleMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Create a random endless-mode puzzle
+ */
+export const useCreateEndlessPuzzle = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createEndlessPuzzle>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createEndlessPuzzle>>,
+  TError,
+  void,
+  TContext
+> => {
+  return useMutation(getCreateEndlessPuzzleMutationOptions(options));
+};
+
+/**
  * Submit a word guess for the current puzzle. Returns the 3D position of the guess, distance to target, and a temperature hint.
  * @summary Submit a guess
  */

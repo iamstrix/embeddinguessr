@@ -12,10 +12,42 @@ import {
   getEmbedding,
   cosineSimilarity,
   getTemperature,
+  generatePuzzle,
+  getRandomPuzzleSet,
 } from "../lib/embeddings";
 import { randomUUID } from "crypto";
 
 const router: IRouter = Router();
+
+router.post("/game/endless", async (req, res): Promise<void> => {
+  if (!isModelReady()) {
+    res.status(503).json({ error: "Embedding model is loading, please try again in a moment" });
+    return;
+  }
+
+  try {
+    const puzzleSet = getRandomPuzzleSet();
+    const puzzle = await generatePuzzle(puzzleSet);
+    const clues = puzzle.clues as Array<{ word: string; x: number; y: number; z: number }>;
+
+    res.json({
+      id: puzzle.id,
+      date: puzzle.date,
+      clues: clues.map((c) => ({ ...c, isClue: true })),
+      target: {
+        word: "?",
+        x: parseFloat(puzzle.targetX),
+        y: parseFloat(puzzle.targetY),
+        z: parseFloat(puzzle.targetZ),
+        isClue: false,
+      },
+      modelReady: true,
+    });
+  } catch (err) {
+    req.log.error({ err }, "Failed to generate endless puzzle");
+    res.status(500).json({ error: "Failed to generate puzzle" });
+  }
+});
 
 router.get("/game/daily", async (req, res): Promise<void> => {
   if (!isModelReady()) {
