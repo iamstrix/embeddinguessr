@@ -157,7 +157,7 @@ export default function Home() {
                       <Trophy size={32} />
                     </div>
                     <h2 className="text-xl font-bold text-white">Puzzle Solved!</h2>
-                    <p className="text-white/70">You found <span className="font-bold text-primary">"{puzzle?.target.word}"</span> in {session.attemptCount} guesses.</p>
+                    <p className="text-white/70">You found <span className="font-bold text-primary">"{session.guesses.find(g => g.isCorrect)?.word ?? "?"}"</span> in {session.attemptCount} guesses.</p>
                     <Link href="/leaderboard" className="mt-4 w-full inline-flex items-center justify-center gap-2 px-4 py-2 bg-primary text-primary-foreground hover:bg-primary/90 rounded-md font-medium transition-colors">
                       <Trophy size={16} /> View Leaderboard
                     </Link>

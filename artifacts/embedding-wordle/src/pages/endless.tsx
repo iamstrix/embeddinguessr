@@ -207,7 +207,7 @@ export default function Endless() {
                     <h2 className="text-lg font-bold text-white">Puzzle Solved!</h2>
                     <p className="text-white/70 text-sm">
                       You found{" "}
-                      <span className="font-bold text-primary">"{puzzle?.target.word === "?" ? "it" : puzzle?.target.word}"</span>{" "}
+                      <span className="font-bold text-primary">"{session.guesses.find(g => g.isCorrect)?.word ?? "?"}"</span>{" "}
                       in {session.attemptCount} guess{session.attemptCount !== 1 ? "es" : ""}.
                     </p>
                     <Button

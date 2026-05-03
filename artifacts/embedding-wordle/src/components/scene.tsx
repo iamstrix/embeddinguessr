@@ -309,8 +309,9 @@ function Scene3D({ clues, target, guesses, solved, modelReady, hintWords, hintPh
       {target && (() => {
         const isBhActive = bhPhase === "pulling" || bhPhase === "exploding";
         const color = solved ? TEMP_COLORS.correct : isBhActive ? "#3b0764" : "#ffffff";
+        const correctWord = guesses.find(g => g.isCorrect)?.word;
         return (
-          <PointSphere position={targetPos3D} color={color} label={solved ? target.word : "?"}
+          <PointSphere position={targetPos3D} color={color} label={solved ? (correctWord ?? target.word) : "?"}
             pulse={!solved && !isBhActive}
             size={solved ? 0.3 : 0.2} isTarget={true} />
         );
@@ -560,7 +561,8 @@ function Scene2D({ clues, target, guesses, solved, hintWords, hintPhase, bhPhase
           const { cx, cy } = targetProj;
           const isBhActive = bhPhase === "pulling" || bhPhase === "exploding";
           const color = solved ? "#ffd700" : isBhActive ? "#7c3aed" : "#ffffff";
-          const label = solved ? target.word : isBhActive ? "✦" : "?";
+          const correctWord = guesses.find(g => g.isCorrect)?.word;
+          const label = solved ? (correctWord ?? target.word) : isBhActive ? "✦" : "?";
           return (
             <g>
               <circle cx={cx} cy={cy} r={16} fill={color} fillOpacity={0.12} stroke={color} strokeWidth={1.5} />
