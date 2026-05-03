@@ -259,10 +259,10 @@ function BhExplosion3D({ position }: { position: [number, number, number] }) {
   return <>{ring(m1, mat1, "#a855f7")}{ring(m2, mat2, "#7c3aed")}{ring(m3, mat3, "#c084fc")}</>;
 }
 
-function Scene3D({ clues, target, guesses, solved, modelReady, hintWords, hintPhase, bhPhase, bhEnergy, bhRevealedWord }: {
+function Scene3D({ clues, target, guesses, solved, modelReady, hintWords, hintPhase, bhPhase, bhEnergy, bhRevealedWord, autoRotate }: {
   clues: EmbeddingPoint[]; target: EmbeddingPoint | null; guesses: GuessResult[];
   solved: boolean; modelReady: boolean; hintWords?: HintWord[]; hintPhase?: HintPhase;
-  bhPhase?: BhPhase; bhEnergy?: number; bhRevealedWord?: BhRevealedWord | null;
+  bhPhase?: BhPhase; bhEnergy?: number; bhRevealedWord?: BhRevealedWord | null; autoRotate?: boolean;
 }) {
   if (!modelReady) {
     return (
@@ -338,7 +338,7 @@ function Scene3D({ clues, target, guesses, solved, modelReady, hintWords, hintPh
       ))}
       {showPullGuesses && <BhPullSpheres3D guesses={guesses} targetPos={targetPos3D} />}
 
-      <OrbitControls makeDefault autoRotate={!solved} autoRotateSpeed={0.5} enableDamping dampingFactor={0.05} />
+      <OrbitControls makeDefault autoRotate={!solved && autoRotate !== false} autoRotateSpeed={0.5} enableDamping dampingFactor={0.05} />
     </Canvas>
   );
 }
@@ -673,7 +673,19 @@ export function Scene({ clues, target, guesses, solved, modelReady, hintWords, h
   bhPhase?: BhPhase; bhEnergy?: number; bhRevealedWord?: BhRevealedWord | null;
 }) {
   const [webglSupported, setWebglSupported] = useState<boolean | null>(null);
+  const [autoRotate, setAutoRotate] = useState(true);
+
   useEffect(() => { setWebglSupported(checkWebGLSupport()); }, []);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() === 'r' && !['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) {
+        setAutoRotate(prev => !prev);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
 
   if (webglSupported === null) return <div className="w-full h-full bg-[#05070a]" />;
 
@@ -682,9 +694,18 @@ export function Scene({ clues, target, guesses, solved, modelReady, hintWords, h
       hintWords={hintWords} hintPhase={hintPhase} bhPhase={bhPhase} bhEnergy={bhEnergy} bhRevealedWord={bhRevealedWord} />
   );
 
+  const tooltip = (
+    <div className="absolute bottom-4 left-4 flex items-center gap-1.5 pointer-events-none select-none">
+      <kbd className="text-[10px] font-mono text-white/40 bg-white/5 border border-white/10 rounded px-1 py-0.5 leading-none">R</kbd>
+      <span className="text-[10px] font-mono text-white/30">
+        {autoRotate ? 'auto-rotate on' : 'auto-rotate off'}
+      </span>
+    </div>
+  );
+
   if (!webglSupported) {
     return (
-      <div className="w-full h-full">
+      <div className="relative w-full h-full">
         {modelReady ? scene2d : (
           <div className="w-full h-full flex items-center justify-center bg-[#05070a]">
             <div className="text-blue-300 font-mono text-sm animate-pulse">Loading embedding model...</div>
@@ -695,9 +716,13 @@ export function Scene({ clues, target, guesses, solved, modelReady, hintWords, h
   }
 
   return (
-    <CanvasErrorBoundary fallback={scene2d}>
-      <Scene3D clues={clues} target={target} guesses={guesses} solved={solved} modelReady={modelReady}
-        hintWords={hintWords} hintPhase={hintPhase} bhPhase={bhPhase} bhEnergy={bhEnergy} bhRevealedWord={bhRevealedWord} />
-    </CanvasErrorBoundary>
+    <div className="relative w-full h-full">
+      <CanvasErrorBoundary fallback={scene2d}>
+        <Scene3D clues={clues} target={target} guesses={guesses} solved={solved} modelReady={modelReady}
+          hintWords={hintWords} hintPhase={hintPhase} bhPhase={bhPhase} bhEnergy={bhEnergy}
+          bhRevealedWord={bhRevealedWord} autoRotate={autoRotate} />
+      </CanvasErrorBoundary>
+      {tooltip}
+    </div>
   );
 }
