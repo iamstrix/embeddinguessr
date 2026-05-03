@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { motion, AnimatePresence } from "framer-motion";
-import { Trophy, Send, Sun } from "lucide-react";
+import { Trophy, Send, Sun, ChevronUp } from "lucide-react";
 import { Link } from "wouter";
 import { useGameSounds } from "@/hooks/use-game-sounds";
 
@@ -44,6 +44,7 @@ export default function Home() {
   const [bhRevealedWord, setBhRevealedWord] = useState<BhRevealedWord | null>(null);
   const [showSimilarity, setShowSimilarity] = useState(true);
   const [session, setSession] = useState<GameSession | null>(null);
+  const [mobileHistoryOpen, setMobileHistoryOpen] = useState(false);
 
   useEffect(() => { setDeviceId(getDeviceId()); }, []);
 
@@ -117,14 +118,8 @@ export default function Home() {
       const hints = data.hints ?? [];
       setHintWords(hints);
       setHintPhase("shooting");
-      setTimeout(() => {
-        setHintPhase("pulsing");
-        sounds.playSolarHit();
-      }, 1500);
-      setTimeout(() => {
-        setHintPhase("revealed");
-        hints.forEach((_: unknown, i: number) => sounds.playHintReveal(i * 220));
-      }, 2350);
+      setTimeout(() => { setHintPhase("pulsing"); sounds.playSolarHit(); }, 1500);
+      setTimeout(() => { setHintPhase("revealed"); hints.forEach((_: unknown, i: number) => sounds.playHintReveal(i * 220)); }, 2350);
     } catch {
       setHintPhase("idle");
     }
@@ -149,22 +144,76 @@ export default function Home() {
       .then((r) => r.json())
       .then((data) => setBhRevealedWord(data))
       .catch(() => {});
-
     setTimeout(() => setBhPhase("pulling"), 1400);
     setTimeout(() => setBhPhase("exploding"), 2900);
     setTimeout(() => setBhPhase("revealed"), 3600);
   }, [bhReady, bhPhase, puzzle, session, hintWords, sounds]);
 
-  const isLoading = isLoadingPuzzle || !puzzle;
   const modelReady = puzzle?.modelReady ?? false;
   const isSolved = session?.solved ?? false;
   const sortedGuesses = session?.guesses
     ? [...session.guesses].sort((a, b) => a.distanceToTarget - b.distanceToTarget)
     : [];
 
+  // Shared guess list content
+  const GuessList = () => (
+    <div className="space-y-2">
+      <AnimatePresence>
+        {sortedGuesses.length === 0 && hintPhase !== "revealed" && bhPhase === "idle" && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+            className="text-center py-8 text-white/40 text-sm font-mono">
+            No guesses yet. Enter a word to see its semantic position.
+          </motion.div>
+        )}
+        {sortedGuesses.map((g, i) => (
+          <motion.div key={g.word + i} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}
+            className="flex items-center justify-between p-3 rounded-lg bg-white/5 border border-white/5">
+            <div className="flex items-center gap-3">
+              <div className={`w-3 h-3 rounded-full shadow-[0_0_10px_rgba(255,255,255,0.2)] ${TEMP_COLORS[g.temperature]}`} />
+              <span className={`font-mono ${g.isCorrect ? "font-bold text-yellow-400" : "text-white"}`}>{g.word}</span>
+            </div>
+            {showSimilarity && <div className="text-xs font-mono text-white/50">{(g.similarityScore * 100).toFixed(1)}%</div>}
+          </motion.div>
+        ))}
+      </AnimatePresence>
+
+      {hintPhase === "revealed" && hintWords.length > 0 && (
+        <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="mt-3 pt-3 border-t border-yellow-500/20">
+          <p className="text-xs font-mono text-yellow-500/60 mb-2 flex items-center gap-1.5"><Sun size={11} /> SOLAR HINTS</p>
+          {hintWords.map((hw, i) => (
+            <motion.div key={hw.word} initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: i * 0.15 }}
+              className="flex items-center justify-between py-1.5 px-2 rounded bg-yellow-500/5 border border-yellow-500/10 mb-1">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-yellow-400" />
+                <span className="font-mono text-yellow-300 text-sm">{hw.word}</span>
+              </div>
+              {showSimilarity && <span className="text-xs font-mono text-yellow-500/70">{(hw.similarity * 100).toFixed(1)}%</span>}
+            </motion.div>
+          ))}
+        </motion.div>
+      )}
+
+      {bhPhase === "revealed" && bhRevealedWord && (
+        <motion.div initial={{ opacity: 0, y: 6, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }}
+          className="mt-3 pt-3 border-t border-purple-500/20">
+          <p className="text-xs font-mono text-purple-400/60 mb-2 flex items-center gap-1.5"><BhIcon /> BLACK HOLE REVEAL</p>
+          <div className="flex items-center justify-between py-2 px-3 rounded-lg bg-purple-500/8 border border-purple-500/20">
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-purple-400" />
+              <span className="font-mono text-purple-200 font-bold tracking-widest">{bhRevealedWord.word}</span>
+            </div>
+            <span className="text-xs font-mono text-purple-400/50 italic">partial</span>
+          </div>
+        </motion.div>
+      )}
+    </div>
+  );
+
   return (
     <Layout>
       <div className="relative w-full h-screen overflow-hidden bg-black">
+        {/* Scene — always full screen */}
         <div className="absolute inset-0 z-0">
           <Scene
             clues={puzzle?.clues ?? []}
@@ -182,186 +231,197 @@ export default function Home() {
         </div>
 
         {modelReady && session && (
-          <div className="absolute inset-y-0 left-0 w-full md:w-96 z-10 flex flex-col pointer-events-none p-4 md:p-8">
-            <div className="pointer-events-auto w-full max-w-sm mx-auto md:mx-0 flex flex-col h-full gap-4">
+          <>
+            {/* ── MOBILE LAYOUT ──────────────────────────────────────────── */}
+            <div className="md:hidden absolute bottom-0 left-0 right-0 z-10 flex flex-col">
 
-              <motion.div
-                initial={{ opacity: 0, y: -20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="bg-black/40 backdrop-blur-xl border border-white/10 rounded-xl p-6 shadow-2xl shrink-0"
-              >
-                <h1 className="text-2xl font-bold tracking-tight text-white mb-2 font-mono">EMBEDDING WORDLE</h1>
-                <p className="text-sm text-white/60 mb-6">Find the target word based on semantic distance in 3D space.</p>
+              {/* Slide-up history drawer */}
+              <AnimatePresence>
+                {mobileHistoryOpen && (
+                  <motion.div
+                    key="history"
+                    initial={{ opacity: 0, y: 16 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 16 }}
+                    transition={{ duration: 0.18 }}
+                    className="max-h-[52vh] flex flex-col bg-black/95 backdrop-blur-xl border-t border-white/10"
+                  >
+                    <div className="flex items-center justify-between px-4 py-2.5 border-b border-white/10 shrink-0">
+                      <span className="font-mono text-xs font-bold text-white/60 uppercase tracking-wider">Guess History ({sortedGuesses.length})</span>
+                      <button onClick={() => setMobileHistoryOpen(false)} className="text-white/30 hover:text-white/70 transition-colors p-1">
+                        <ChevronUp size={16} />
+                      </button>
+                    </div>
+                    <ScrollArea className="flex-1 px-3 py-2">
+                      <GuessList />
+                    </ScrollArea>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* Bottom control bar */}
+              <div className="bg-black/85 backdrop-blur-xl border-t border-white/10 px-3 pt-3 pb-7 flex flex-col gap-2.5">
+
+                {/* Title + history toggle */}
+                <div className="flex items-center justify-between">
+                  <span className="font-mono text-xs font-bold text-white/70 tracking-widest">EMBEDDING WORDLE</span>
+                  <button
+                    onClick={() => setMobileHistoryOpen(v => !v)}
+                    className="flex items-center gap-1 text-xs font-mono text-white/40 hover:text-white/70 transition-colors"
+                  >
+                    <span>{sortedGuesses.length} guess{sortedGuesses.length !== 1 ? 'es' : ''}</span>
+                    <motion.div animate={{ rotate: mobileHistoryOpen ? 180 : 0 }} transition={{ duration: 0.2 }}>
+                      <ChevronUp size={13} />
+                    </motion.div>
+                  </button>
+                </div>
 
                 {isSolved ? (
-                  <div className="space-y-4 text-center py-4">
-                    <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/20 text-primary mb-2">
-                      <Trophy size={32} />
+                  <div className="flex items-center justify-between py-1">
+                    <div className="flex items-center gap-2">
+                      <Trophy size={16} className="text-yellow-400" />
+                      <span className="font-mono text-sm font-bold text-yellow-400">
+                        "{session.guesses.find(g => g.isCorrect)?.word ?? "?"}"
+                      </span>
+                      <span className="text-white/40 text-xs font-mono">in {session.attemptCount} guesses</span>
                     </div>
-                    <h2 className="text-xl font-bold text-white">Puzzle Solved!</h2>
-                    <p className="text-white/70">You found <span className="font-bold text-primary">"{session.guesses.find(g => g.isCorrect)?.word ?? "?"}"</span> in {session.attemptCount} guesses.</p>
-                    <Link href="/leaderboard" className="mt-4 w-full inline-flex items-center justify-center gap-2 px-4 py-2 bg-primary text-primary-foreground hover:bg-primary/90 rounded-md font-medium transition-colors">
-                      <Trophy size={16} /> View Leaderboard
+                    <Link href="/leaderboard" className="text-xs font-mono text-primary hover:text-primary/80 transition-colors">
+                      Leaderboard →
                     </Link>
                   </div>
                 ) : (
                   <>
+                    {/* Input row */}
                     <form onSubmit={handleGuess} className="flex gap-2">
                       <Input
                         placeholder="Type a word..."
                         value={guessInput}
                         onChange={(e) => setGuessInput(e.target.value)}
-                        className="bg-black/50 border-white/20 text-white placeholder:text-white/40 focus-visible:ring-primary"
+                        className="bg-black/50 border-white/20 text-white placeholder:text-white/40 focus-visible:ring-primary text-base"
                         disabled={isSubmitting}
-                        autoFocus
+                        autoCapitalize="none"
+                        autoCorrect="off"
+                        spellCheck={false}
                       />
-                      <Button type="submit" size="icon" disabled={isSubmitting || !guessInput.trim()} className="shrink-0 bg-primary text-primary-foreground hover:bg-primary/90">
-                        <Send size={18} />
+                      <Button type="submit" size="icon" disabled={isSubmitting || !guessInput.trim()}
+                        className="shrink-0 bg-primary text-primary-foreground hover:bg-primary/90 h-10 w-10">
+                        <Send size={17} />
                       </Button>
                     </form>
 
-                    {/* Solar Hint */}
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={triggerHint}
-                      disabled={hintPhase !== "idle"}
-                      className="mt-2 w-full gap-2 border border-yellow-500/25 text-yellow-400/70 hover:bg-yellow-500/10 hover:text-yellow-300 hover:border-yellow-500/50 disabled:opacity-40 transition-colors"
-                    >
-                      <Sun size={14} className={hintPhase === "loading" ? "animate-spin" : hintPhase === "shooting" ? "animate-pulse" : ""} />
-                      {hintPhase === "idle" && "Solar Hint"}
-                      {hintPhase === "loading" && "Charging..."}
-                      {hintPhase === "shooting" && "Firing..."}
-                      {hintPhase === "pulsing" && "Pulsing..."}
-                      {hintPhase === "revealed" && "Hints Revealed"}
-                    </Button>
+                    {/* Power-ups row */}
+                    <div className="flex gap-2">
+                      <Button type="button" variant="ghost" size="sm" onClick={triggerHint}
+                        disabled={hintPhase !== "idle"}
+                        className="flex-1 h-8 gap-1.5 border border-yellow-500/25 text-yellow-400/70 hover:bg-yellow-500/10 hover:text-yellow-300 disabled:opacity-40 text-xs px-2">
+                        <Sun size={12} className={hintPhase === "loading" ? "animate-spin" : hintPhase === "shooting" ? "animate-pulse" : ""} />
+                        {hintPhase === "idle" ? "Solar Hint" : hintPhase === "loading" ? "Charging..." : hintPhase === "shooting" ? "Firing..." : hintPhase === "pulsing" ? "Pulsing..." : "Revealed"}
+                      </Button>
 
-                    {/* Black Hole */}
-                    <button
-                      type="button"
-                      onClick={triggerBlackHole}
-                      disabled={!bhReady || bhPhase !== "idle"}
-                      className={`relative mt-1 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-md text-sm font-medium border overflow-hidden transition-all duration-300 ${
-                        bhReady && bhPhase === "idle"
-                          ? "border-purple-500/50 text-purple-300 bg-purple-900/10 hover:bg-purple-900/20 cursor-pointer"
-                          : "border-purple-500/12 text-purple-400/30 cursor-default"
-                      }`}
-                    >
-                      {/* Pulsing void aura when ready */}
-                      {bhReady && bhPhase === "idle" && (
-                        <span className="pointer-events-none absolute inset-0 rounded-md border border-purple-500/40 animate-pulse" />
-                      )}
-                      {/* Energy fill bar */}
-                      <span
-                        className="pointer-events-none absolute inset-x-0 bottom-0 h-0.5 bg-gradient-to-r from-purple-900 via-purple-500 to-purple-300 transition-all duration-700"
-                        style={{ width: `${bhEnergy * 100}%` }}
-                      />
-                      <BhIcon />
-                      <span>
-                        {bhPhase === "idle" && !bhReady && `Black Hole ${Math.round(bhEnergy * 100)}%`}
-                        {bhPhase === "idle" && bhReady && "Black Hole"}
-                        {bhPhase === "shooting" && "Firing..."}
-                        {bhPhase === "pulling" && "Pulling..."}
-                        {bhPhase === "exploding" && "Imploding..."}
-                        {bhPhase === "revealed" && "Revealed ✦"}
-                      </span>
-                    </button>
+                      <button type="button" onClick={triggerBlackHole}
+                        disabled={!bhReady || bhPhase !== "idle"}
+                        className={`relative flex-1 h-8 flex items-center justify-center gap-1.5 px-2 rounded-md text-xs font-medium border overflow-hidden transition-all duration-300 ${
+                          bhReady && bhPhase === "idle"
+                            ? "border-purple-500/50 text-purple-300 bg-purple-900/10"
+                            : "border-purple-500/15 text-purple-400/30"
+                        }`}>
+                        {bhReady && bhPhase === "idle" && <span className="pointer-events-none absolute inset-0 rounded-md border border-purple-500/40 animate-pulse" />}
+                        <span className="pointer-events-none absolute inset-x-0 bottom-0 h-0.5 bg-gradient-to-r from-purple-900 via-purple-500 to-purple-300 transition-all duration-700" style={{ width: `${bhEnergy * 100}%` }} />
+                        <BhIcon />
+                        <span>
+                          {bhPhase === "idle" && (bhReady ? "Black Hole" : `BH ${Math.round(bhEnergy * 100)}%`)}
+                          {bhPhase !== "idle" && (bhPhase === "shooting" ? "Firing..." : bhPhase === "pulling" ? "Pulling..." : bhPhase === "exploding" ? "Imploding..." : "Revealed ✦")}
+                        </span>
+                      </button>
+                    </div>
                   </>
                 )}
-              </motion.div>
-
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="bg-black/40 backdrop-blur-xl border border-white/10 rounded-xl overflow-hidden flex flex-col flex-1 min-h-0 shadow-2xl"
-              >
-                <div className="p-4 border-b border-white/10 bg-black/40 shrink-0">
-                  <h3 className="font-mono text-sm font-bold text-white/80">GUESS HISTORY ({sortedGuesses.length})</h3>
-                </div>
-                <ScrollArea className="flex-1 p-4">
-                  <div className="space-y-2">
-                    <AnimatePresence>
-                      {sortedGuesses.length === 0 && hintPhase !== "revealed" && bhPhase === "idle" && (
-                        <motion.div
-                          initial={{ opacity: 0 }}
-                          animate={{ opacity: 1 }}
-                          className="text-center py-8 text-white/40 text-sm font-mono"
-                        >
-                          No guesses yet. Enter a word to see its semantic position.
-                        </motion.div>
-                      )}
-                      {sortedGuesses.map((g, i) => (
-                        <motion.div
-                          key={g.word + i}
-                          initial={{ opacity: 0, x: -10 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          className="flex items-center justify-between p-3 rounded-lg bg-white/5 border border-white/5"
-                        >
-                          <div className="flex items-center gap-3">
-                            <div className={`w-3 h-3 rounded-full shadow-[0_0_10px_rgba(255,255,255,0.2)] ${TEMP_COLORS[g.temperature]}`} />
-                            <span className={`font-mono ${g.isCorrect ? "font-bold text-yellow-400" : "text-white"}`}>{g.word}</span>
-                          </div>
-                          {showSimilarity && (
-                            <div className="text-xs font-mono text-white/50">
-                              {(g.similarityScore * 100).toFixed(1)}%
-                            </div>
-                          )}
-                        </motion.div>
-                      ))}
-                    </AnimatePresence>
-
-                    {hintPhase === "revealed" && hintWords.length > 0 && (
-                      <motion.div
-                        initial={{ opacity: 0, y: 6 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="mt-3 pt-3 border-t border-yellow-500/20"
-                      >
-                        <p className="text-xs font-mono text-yellow-500/60 mb-2 flex items-center gap-1.5">
-                          <Sun size={11} /> SOLAR HINTS
-                        </p>
-                        {hintWords.map((hw, i) => (
-                          <motion.div
-                            key={hw.word}
-                            initial={{ opacity: 0, x: -6 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            transition={{ delay: i * 0.15 }}
-                            className="flex items-center justify-between py-1.5 px-2 rounded bg-yellow-500/5 border border-yellow-500/10 mb-1"
-                          >
-                            <div className="flex items-center gap-2">
-                              <div className="w-2 h-2 rounded-full bg-yellow-400" />
-                              <span className="font-mono text-yellow-300 text-sm">{hw.word}</span>
-                            </div>
-                            {showSimilarity && <span className="text-xs font-mono text-yellow-500/70">{(hw.similarity * 100).toFixed(1)}%</span>}
-                          </motion.div>
-                        ))}
-                      </motion.div>
-                    )}
-
-                    {bhPhase === "revealed" && bhRevealedWord && (
-                      <motion.div
-                        initial={{ opacity: 0, y: 6, scale: 0.95 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        className="mt-3 pt-3 border-t border-purple-500/20"
-                      >
-                        <p className="text-xs font-mono text-purple-400/60 mb-2 flex items-center gap-1.5">
-                          <BhIcon /> BLACK HOLE REVEAL
-                        </p>
-                        <div className="flex items-center justify-between py-2 px-3 rounded-lg bg-purple-500/8 border border-purple-500/20">
-                          <div className="flex items-center gap-2">
-                            <div className="w-2 h-2 rounded-full bg-purple-400" />
-                            <span className="font-mono text-purple-200 font-bold tracking-widest">{bhRevealedWord.word}</span>
-                          </div>
-                          <span className="text-xs font-mono text-purple-400/50 italic">partial</span>
-                        </div>
-                      </motion.div>
-                    )}
-                  </div>
-                </ScrollArea>
-              </motion.div>
-
+              </div>
             </div>
-          </div>
+
+            {/* ── DESKTOP LAYOUT ─────────────────────────────────────────── */}
+            <div className="hidden md:flex absolute inset-y-0 left-0 w-96 z-10 flex-col pointer-events-none p-8">
+              <div className="pointer-events-auto w-full flex flex-col h-full gap-4">
+
+                <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }}
+                  className="bg-black/40 backdrop-blur-xl border border-white/10 rounded-xl p-6 shadow-2xl shrink-0">
+                  <h1 className="text-2xl font-bold tracking-tight text-white mb-2 font-mono">EMBEDDING WORDLE</h1>
+                  <p className="text-sm text-white/60 mb-6">Find the target word based on semantic distance in 3D space.</p>
+
+                  {isSolved ? (
+                    <div className="space-y-4 text-center py-4">
+                      <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/20 text-primary mb-2">
+                        <Trophy size={32} />
+                      </div>
+                      <h2 className="text-xl font-bold text-white">Puzzle Solved!</h2>
+                      <p className="text-white/70">You found <span className="font-bold text-primary">"{session.guesses.find(g => g.isCorrect)?.word ?? "?"}"</span> in {session.attemptCount} guesses.</p>
+                      <Link href="/leaderboard" className="mt-4 w-full inline-flex items-center justify-center gap-2 px-4 py-2 bg-primary text-primary-foreground hover:bg-primary/90 rounded-md font-medium transition-colors">
+                        <Trophy size={16} /> View Leaderboard
+                      </Link>
+                    </div>
+                  ) : (
+                    <>
+                      <form onSubmit={handleGuess} className="flex gap-2">
+                        <Input
+                          placeholder="Type a word..."
+                          value={guessInput}
+                          onChange={(e) => setGuessInput(e.target.value)}
+                          className="bg-black/50 border-white/20 text-white placeholder:text-white/40 focus-visible:ring-primary"
+                          disabled={isSubmitting}
+                          autoFocus
+                        />
+                        <Button type="submit" size="icon" disabled={isSubmitting || !guessInput.trim()} className="shrink-0 bg-primary text-primary-foreground hover:bg-primary/90">
+                          <Send size={18} />
+                        </Button>
+                      </form>
+
+                      <Button type="button" variant="ghost" size="sm" onClick={triggerHint}
+                        disabled={hintPhase !== "idle"}
+                        className="mt-2 w-full gap-2 border border-yellow-500/25 text-yellow-400/70 hover:bg-yellow-500/10 hover:text-yellow-300 hover:border-yellow-500/50 disabled:opacity-40 transition-colors">
+                        <Sun size={14} className={hintPhase === "loading" ? "animate-spin" : hintPhase === "shooting" ? "animate-pulse" : ""} />
+                        {hintPhase === "idle" && "Solar Hint"}
+                        {hintPhase === "loading" && "Charging..."}
+                        {hintPhase === "shooting" && "Firing..."}
+                        {hintPhase === "pulsing" && "Pulsing..."}
+                        {hintPhase === "revealed" && "Hints Revealed"}
+                      </Button>
+
+                      <button type="button" onClick={triggerBlackHole}
+                        disabled={!bhReady || bhPhase !== "idle"}
+                        className={`relative mt-1 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-md text-sm font-medium border overflow-hidden transition-all duration-300 ${
+                          bhReady && bhPhase === "idle"
+                            ? "border-purple-500/50 text-purple-300 bg-purple-900/10 hover:bg-purple-900/20 cursor-pointer"
+                            : "border-purple-500/12 text-purple-400/30 cursor-default"
+                        }`}>
+                        {bhReady && bhPhase === "idle" && <span className="pointer-events-none absolute inset-0 rounded-md border border-purple-500/40 animate-pulse" />}
+                        <span className="pointer-events-none absolute inset-x-0 bottom-0 h-0.5 bg-gradient-to-r from-purple-900 via-purple-500 to-purple-300 transition-all duration-700" style={{ width: `${bhEnergy * 100}%` }} />
+                        <BhIcon />
+                        <span>
+                          {bhPhase === "idle" && !bhReady && `Black Hole ${Math.round(bhEnergy * 100)}%`}
+                          {bhPhase === "idle" && bhReady && "Black Hole"}
+                          {bhPhase === "shooting" && "Firing..."}
+                          {bhPhase === "pulling" && "Pulling..."}
+                          {bhPhase === "exploding" && "Imploding..."}
+                          {bhPhase === "revealed" && "Revealed ✦"}
+                        </span>
+                      </button>
+                    </>
+                  )}
+                </motion.div>
+
+                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+                  className="bg-black/40 backdrop-blur-xl border border-white/10 rounded-xl overflow-hidden flex flex-col flex-1 min-h-0 shadow-2xl">
+                  <div className="p-4 border-b border-white/10 bg-black/40 shrink-0">
+                    <h3 className="font-mono text-sm font-bold text-white/80">GUESS HISTORY ({sortedGuesses.length})</h3>
+                  </div>
+                  <ScrollArea className="flex-1 p-4">
+                    <GuessList />
+                  </ScrollArea>
+                </motion.div>
+
+              </div>
+            </div>
+          </>
         )}
       </div>
     </Layout>
