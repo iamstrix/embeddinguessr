@@ -1,6 +1,7 @@
 import { Link, useLocation } from "wouter";
 import { LayoutDashboard, Trophy, BarChart2, Infinity, Volume2, VolumeX } from "lucide-react";
 import { useSpaceAudio } from "../hooks/use-space-audio";
+import { WelcomeScreen } from "./welcome-screen";
 
 export function FloatingNav() {
   const [location] = useLocation();
@@ -61,6 +62,7 @@ export function FloatingNav() {
 export function Layout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-[#05070a] text-foreground selection:bg-primary/30">
+      <WelcomeScreen />
       <FloatingNav />
       {children}
     </div>

@@ -5,6 +5,7 @@ import { getDeviceId } from "@/lib/device";
 import { Scene } from "@/components/scene";
 import type { HintWord, HintPhase, BhPhase, BhRevealedWord } from "@/components/scene";
 import { Layout } from "@/components/layout";
+import { HintTooltip } from "@/components/hint-tooltip";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -197,7 +198,7 @@ export default function Home() {
       {bhPhase === "revealed" && bhRevealedWord && (
         <motion.div initial={{ opacity: 0, y: 6, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }}
           className="mt-3 pt-3 border-t border-purple-500/20">
-          <p className="text-xs font-mono text-purple-400/60 mb-2 flex items-center gap-1.5"><BhIcon /> BLACK HOLE REVEAL</p>
+          <p className="text-xs font-mono text-purple-400/60 mb-2 flex items-center gap-1.5"><BhIcon /> VOID HINT REVEAL</p>
           <div className="flex items-center justify-between py-2 px-3 rounded-lg bg-purple-500/8 border border-purple-500/20">
             <div className="flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-purple-400" />
@@ -264,7 +265,7 @@ export default function Home() {
 
                 {/* Title + history toggle */}
                 <div className="flex items-center justify-between">
-                  <span className="font-mono text-xs font-bold text-white/70 tracking-widest">EMBEDDING WORDLE</span>
+                  <span className="font-mono text-xs font-bold text-white/70 tracking-widest">EmbeddinGuessr</span>
                   <button
                     onClick={() => setMobileHistoryOpen(v => !v)}
                     className="flex items-center gap-1 text-xs font-mono text-white/40 hover:text-white/70 transition-colors"
@@ -311,28 +312,32 @@ export default function Home() {
 
                     {/* Power-ups row */}
                     <div className="flex gap-2">
-                      <Button type="button" variant="ghost" size="sm" onClick={triggerHint}
-                        disabled={hintPhase !== "idle"}
-                        className="flex-1 h-8 gap-1.5 border border-yellow-500/25 text-yellow-400/70 hover:bg-yellow-500/10 hover:text-yellow-300 disabled:opacity-40 text-xs px-2">
-                        <Sun size={12} className={hintPhase === "loading" ? "animate-spin" : hintPhase === "shooting" ? "animate-pulse" : ""} />
-                        {hintPhase === "idle" ? "Solar Hint" : hintPhase === "loading" ? "Charging..." : hintPhase === "shooting" ? "Firing..." : hintPhase === "pulsing" ? "Pulsing..." : "Revealed"}
-                      </Button>
+                      <HintTooltip title="Solar Hint" description="Fires a burst that reveals 3 words near the target — each ~50% similar. Great stepping-stones when you're stuck." className="flex-1">
+                        <Button type="button" variant="ghost" size="sm" onClick={triggerHint}
+                          disabled={hintPhase !== "idle"}
+                          className="w-full h-8 gap-1.5 border border-yellow-500/25 text-yellow-400/70 hover:bg-yellow-500/10 hover:text-yellow-300 disabled:opacity-40 text-xs px-2">
+                          <Sun size={12} className={hintPhase === "loading" ? "animate-spin" : hintPhase === "shooting" ? "animate-pulse" : ""} />
+                          {hintPhase === "idle" ? "Solar Hint" : hintPhase === "loading" ? "Charging..." : hintPhase === "shooting" ? "Firing..." : hintPhase === "pulsing" ? "Pulsing..." : "Revealed"}
+                        </Button>
+                      </HintTooltip>
 
-                      <button type="button" onClick={triggerBlackHole}
-                        disabled={!bhReady || bhPhase !== "idle"}
-                        className={`relative flex-1 h-8 flex items-center justify-center gap-1.5 px-2 rounded-md text-xs font-medium border overflow-hidden transition-all duration-300 ${
-                          bhReady && bhPhase === "idle"
-                            ? "border-purple-500/50 text-purple-300 bg-purple-900/10"
-                            : "border-purple-500/15 text-purple-400/30"
-                        }`}>
-                        {bhReady && bhPhase === "idle" && <span className="pointer-events-none absolute inset-0 rounded-md border border-purple-500/40 animate-pulse" />}
-                        <span className="pointer-events-none absolute inset-x-0 bottom-0 h-0.5 bg-gradient-to-r from-purple-900 via-purple-500 to-purple-300 transition-all duration-700" style={{ width: `${bhEnergy * 100}%` }} />
-                        <BhIcon />
-                        <span>
-                          {bhPhase === "idle" && (bhReady ? "Black Hole" : `BH ${Math.round(bhEnergy * 100)}%`)}
-                          {bhPhase !== "idle" && (bhPhase === "shooting" ? "Firing..." : bhPhase === "pulling" ? "Pulling..." : bhPhase === "exploding" ? "Imploding..." : "Revealed ✦")}
-                        </span>
-                      </button>
+                      <HintTooltip title="Void Hint" description="Charges as you guess. When full, reveals the target word with some letters removed — e.g. p _ i s _ n _ r." className="flex-1">
+                        <button type="button" onClick={triggerBlackHole}
+                          disabled={!bhReady || bhPhase !== "idle"}
+                          className={`relative w-full h-8 flex items-center justify-center gap-1.5 px-2 rounded-md text-xs font-medium border overflow-hidden transition-all duration-300 ${
+                            bhReady && bhPhase === "idle"
+                              ? "border-purple-500/50 text-purple-300 bg-purple-900/10"
+                              : "border-purple-500/15 text-purple-400/30"
+                          }`}>
+                          {bhReady && bhPhase === "idle" && <span className="pointer-events-none absolute inset-0 rounded-md border border-purple-500/40 animate-pulse" />}
+                          <span className="pointer-events-none absolute inset-x-0 bottom-0 h-0.5 bg-gradient-to-r from-purple-900 via-purple-500 to-purple-300 transition-all duration-700" style={{ width: `${bhEnergy * 100}%` }} />
+                          <BhIcon />
+                          <span>
+                            {bhPhase === "idle" && (bhReady ? "Void Hint" : `Void ${Math.round(bhEnergy * 100)}%`)}
+                            {bhPhase !== "idle" && (bhPhase === "shooting" ? "Firing..." : bhPhase === "pulling" ? "Pulling..." : bhPhase === "exploding" ? "Imploding..." : "Revealed ✦")}
+                          </span>
+                        </button>
+                      </HintTooltip>
                     </div>
                   </>
                 )}
@@ -345,7 +350,7 @@ export default function Home() {
 
                 <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }}
                   className="bg-black/40 backdrop-blur-xl border border-white/10 rounded-xl p-6 shadow-2xl shrink-0">
-                  <h1 className="text-2xl font-bold tracking-tight text-white mb-2 font-mono">EMBEDDING WORDLE</h1>
+                  <h1 className="text-2xl font-bold tracking-tight text-white mb-2 font-mono">EmbeddinGuessr</h1>
                   <p className="text-sm text-white/60 mb-6">Find the target word based on semantic distance in 3D space.</p>
 
                   {isSolved ? (
@@ -375,36 +380,40 @@ export default function Home() {
                         </Button>
                       </form>
 
-                      <Button type="button" variant="ghost" size="sm" onClick={triggerHint}
-                        disabled={hintPhase !== "idle"}
-                        className="mt-2 w-full gap-2 border border-yellow-500/25 text-yellow-400/70 hover:bg-yellow-500/10 hover:text-yellow-300 hover:border-yellow-500/50 disabled:opacity-40 transition-colors">
-                        <Sun size={14} className={hintPhase === "loading" ? "animate-spin" : hintPhase === "shooting" ? "animate-pulse" : ""} />
-                        {hintPhase === "idle" && "Solar Hint"}
-                        {hintPhase === "loading" && "Charging..."}
-                        {hintPhase === "shooting" && "Firing..."}
-                        {hintPhase === "pulsing" && "Pulsing..."}
-                        {hintPhase === "revealed" && "Hints Revealed"}
-                      </Button>
+                      <HintTooltip title="Solar Hint" description="Fires a burst that reveals 3 words near the target — each ~50% similar. Great stepping-stones when you're stuck." className="w-full">
+                        <Button type="button" variant="ghost" size="sm" onClick={triggerHint}
+                          disabled={hintPhase !== "idle"}
+                          className="mt-2 w-full gap-2 border border-yellow-500/25 text-yellow-400/70 hover:bg-yellow-500/10 hover:text-yellow-300 hover:border-yellow-500/50 disabled:opacity-40 transition-colors">
+                          <Sun size={14} className={hintPhase === "loading" ? "animate-spin" : hintPhase === "shooting" ? "animate-pulse" : ""} />
+                          {hintPhase === "idle" && "Solar Hint"}
+                          {hintPhase === "loading" && "Charging..."}
+                          {hintPhase === "shooting" && "Firing..."}
+                          {hintPhase === "pulsing" && "Pulsing..."}
+                          {hintPhase === "revealed" && "Hints Revealed"}
+                        </Button>
+                      </HintTooltip>
 
-                      <button type="button" onClick={triggerBlackHole}
-                        disabled={!bhReady || bhPhase !== "idle"}
-                        className={`relative mt-1 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-md text-sm font-medium border overflow-hidden transition-all duration-300 ${
-                          bhReady && bhPhase === "idle"
-                            ? "border-purple-500/50 text-purple-300 bg-purple-900/10 hover:bg-purple-900/20 cursor-pointer"
-                            : "border-purple-500/12 text-purple-400/30 cursor-default"
-                        }`}>
-                        {bhReady && bhPhase === "idle" && <span className="pointer-events-none absolute inset-0 rounded-md border border-purple-500/40 animate-pulse" />}
-                        <span className="pointer-events-none absolute inset-x-0 bottom-0 h-0.5 bg-gradient-to-r from-purple-900 via-purple-500 to-purple-300 transition-all duration-700" style={{ width: `${bhEnergy * 100}%` }} />
-                        <BhIcon />
-                        <span>
-                          {bhPhase === "idle" && !bhReady && `Black Hole ${Math.round(bhEnergy * 100)}%`}
-                          {bhPhase === "idle" && bhReady && "Black Hole"}
-                          {bhPhase === "shooting" && "Firing..."}
-                          {bhPhase === "pulling" && "Pulling..."}
-                          {bhPhase === "exploding" && "Imploding..."}
-                          {bhPhase === "revealed" && "Revealed ✦"}
-                        </span>
-                      </button>
+                      <HintTooltip title="Void Hint" description="Charges as you guess. When full, reveals the target word with some letters removed — e.g. p _ i s _ n _ r." className="w-full">
+                        <button type="button" onClick={triggerBlackHole}
+                          disabled={!bhReady || bhPhase !== "idle"}
+                          className={`relative mt-1 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-md text-sm font-medium border overflow-hidden transition-all duration-300 ${
+                            bhReady && bhPhase === "idle"
+                              ? "border-purple-500/50 text-purple-300 bg-purple-900/10 hover:bg-purple-900/20 cursor-pointer"
+                              : "border-purple-500/12 text-purple-400/30 cursor-default"
+                          }`}>
+                          {bhReady && bhPhase === "idle" && <span className="pointer-events-none absolute inset-0 rounded-md border border-purple-500/40 animate-pulse" />}
+                          <span className="pointer-events-none absolute inset-x-0 bottom-0 h-0.5 bg-gradient-to-r from-purple-900 via-purple-500 to-purple-300 transition-all duration-700" style={{ width: `${bhEnergy * 100}%` }} />
+                          <BhIcon />
+                          <span>
+                            {bhPhase === "idle" && !bhReady && `Void Hint ${Math.round(bhEnergy * 100)}%`}
+                            {bhPhase === "idle" && bhReady && "Void Hint"}
+                            {bhPhase === "shooting" && "Firing..."}
+                            {bhPhase === "pulling" && "Pulling..."}
+                            {bhPhase === "exploding" && "Imploding..."}
+                            {bhPhase === "revealed" && "Revealed ✦"}
+                          </span>
+                        </button>
+                      </HintTooltip>
                     </>
                   )}
                 </motion.div>
