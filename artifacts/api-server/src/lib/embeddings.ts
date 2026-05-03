@@ -144,6 +144,40 @@ export function projectTo3D(vec: number[], pcaParams: PcaParams): { x: number; y
   };
 }
 
+/**
+ * Project a guess word into 3D so its Euclidean distance from the target
+ * equals exactly the cosine distance (1 - similarity).  This guarantees
+ * the visual distance in the scene always matches the percentage shown.
+ *
+ * Direction is taken from the raw PCA projection (semantic direction stays
+ * meaningful); only the magnitude is overridden by the cosine distance.
+ */
+export function projectGuessTo3D(
+  guessVec: number[],
+  cosineDistance: number,
+  target: { x: number; y: number; z: number },
+  pcaParams: PcaParams
+): { x: number; y: number; z: number } {
+  const raw = projectTo3D(guessVec, pcaParams);
+
+  const dx = raw.x - target.x;
+  const dy = raw.y - target.y;
+  const dz = raw.z - target.z;
+  const mag = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+  if (mag < 1e-9) {
+    // Degenerate — guess projects exactly onto target; nudge slightly
+    return { x: target.x + cosineDistance, y: target.y, z: target.z };
+  }
+
+  // Unit direction × cosine distance
+  return {
+    x: target.x + (dx / mag) * cosineDistance,
+    y: target.y + (dy / mag) * cosineDistance,
+    z: target.z + (dz / mag) * cosineDistance,
+  };
+}
+
 // Large, diverse reference vocabulary so PCA axes capture the full
 // shape of semantic space — not just the 4 puzzle words.
 const REFERENCE_VOCABULARY = [

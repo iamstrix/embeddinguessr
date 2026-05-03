@@ -14,7 +14,7 @@ import {
   getTemperature,
   generatePuzzle,
   getRandomPuzzleSet,
-  projectTo3D,
+  projectGuessTo3D,
   getGlobalPcaParams,
 } from "../lib/embeddings";
 import { randomUUID } from "crypto";
@@ -124,12 +124,12 @@ router.post("/game/guess", async (req, res): Promise<void> => {
   const targetY = parseFloat(puzzle.targetY);
   const targetZ = parseFloat(puzzle.targetZ);
 
+  const target3D = { x: targetX, y: targetY, z: targetZ };
   let x: number, y: number, z: number;
   if (isCorrect) {
     x = targetX; y = targetY; z = targetZ;
   } else {
-    const pcaParams = getGlobalPcaParams();
-    const pos = projectTo3D(guessVec, pcaParams);
+    const pos = projectGuessTo3D(guessVec, distance, target3D, getGlobalPcaParams());
     x = pos.x; y = pos.y; z = pos.z;
   }
 
@@ -244,12 +244,12 @@ router.post("/game/session/:sessionId/submit", async (req, res): Promise<void> =
   const targetY = parseFloat(puzzle.targetY);
   const targetZ = parseFloat(puzzle.targetZ);
 
+  const target3D = { x: targetX, y: targetY, z: targetZ };
   let x: number, y: number, z: number;
   if (isCorrect) {
     x = targetX; y = targetY; z = targetZ;
   } else {
-    const pcaParams = getGlobalPcaParams();
-    const pos = projectTo3D(guessVec, pcaParams);
+    const pos = projectGuessTo3D(guessVec, distance, target3D, getGlobalPcaParams());
     x = pos.x; y = pos.y; z = pos.z;
   }
 
