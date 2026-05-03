@@ -1,8 +1,11 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useUser, useClerk } from "@clerk/react";
+import { useUser } from "@clerk/react";
+import { useLocation } from "wouter";
 import { useSubmitEndlessScore } from "@workspace/api-client-react";
 import { Trophy, Infinity, LogIn, X, Check, Lock } from "lucide-react";
+
+const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 interface EndlessScoreSubmitModalProps {
   open: boolean;
@@ -17,8 +20,8 @@ export function EndlessScoreSubmitModal({
   guessCount,
   targetWord,
 }: EndlessScoreSubmitModalProps) {
-  const { user, isLoaded } = useUser();
-  const { openSignIn } = useClerk();
+  const { user } = useUser();
+  const [, setLocation] = useLocation();
 
   const [playerName, setPlayerName] = useState("");
   const [submitted, setSubmitted] = useState(false);
@@ -36,10 +39,10 @@ export function EndlessScoreSubmitModal({
   }, [open]);
 
   useEffect(() => {
-    if (user && isLoaded && !playerName) {
+    if (user && !playerName) {
       setPlayerName(user.firstName ?? user.username ?? user.fullName ?? "");
     }
-  }, [user, isLoaded]);
+  }, [user]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -156,7 +159,10 @@ export function EndlessScoreSubmitModal({
                   </div>
                   <button
                     type="button"
-                    onClick={() => openSignIn()}
+                    onClick={() => {
+                      onClose();
+                      setLocation(`${basePath}/sign-in?redirect_url=${encodeURIComponent(`${basePath}/endless`)}`);
+                    }}
                     className="w-full py-3 rounded-lg bg-primary hover:bg-primary/90 font-mono font-bold text-sm text-primary-foreground transition-colors flex items-center justify-center gap-2"
                   >
                     <LogIn size={15} />
