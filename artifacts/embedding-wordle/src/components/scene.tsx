@@ -258,7 +258,10 @@ function Scene2D({
     const rangeY = syMax - syMin || 1;
     const scaleX = (W - PAD * 2) / rangeX;
     const scaleY = (H - PAD * 2) / rangeY;
-    const scale = Math.min(scaleX, scaleY);
+    // Cap zoom so tightly-clustered points don't fill the entire viewport —
+    // leaving visible empty space makes the spread feel real.
+    const MAX_SCALE = 80;
+    const scale = Math.min(scaleX, scaleY, MAX_SCALE);
 
     const midSx = (sxMin + sxMax) / 2;
     const midSy = (syMin + syMax) / 2;

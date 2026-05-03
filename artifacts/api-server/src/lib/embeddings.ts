@@ -152,6 +152,11 @@ export function projectTo3D(vec: number[], pcaParams: PcaParams): { x: number; y
  * Direction is taken from the raw PCA projection (semantic direction stays
  * meaningful); only the magnitude is overridden by the cosine distance.
  */
+// All stored coordinates and guess distances are multiplied by this factor.
+// Increasing it spreads everything further apart in 3D space while keeping
+// relative proportions (and therefore the similarity percentages) the same.
+export const COORD_SCALE = 5;
+
 export function projectGuessTo3D(
   guessVec: number[],
   cosineDistance: number,
@@ -160,21 +165,27 @@ export function projectGuessTo3D(
 ): { x: number; y: number; z: number } {
   const raw = projectTo3D(guessVec, pcaParams);
 
-  const dx = raw.x - target.x;
-  const dy = raw.y - target.y;
-  const dz = raw.z - target.z;
+  // Scale the raw projection to the same space as the stored target coords
+  const rx = raw.x * COORD_SCALE;
+  const ry = raw.y * COORD_SCALE;
+  const rz = raw.z * COORD_SCALE;
+
+  const dx = rx - target.x;
+  const dy = ry - target.y;
+  const dz = rz - target.z;
   const mag = Math.sqrt(dx * dx + dy * dy + dz * dz);
 
+  const scaledDist = cosineDistance * COORD_SCALE;
+
   if (mag < 1e-9) {
-    // Degenerate — guess projects exactly onto target; nudge slightly
-    return { x: target.x + cosineDistance, y: target.y, z: target.z };
+    return { x: target.x + scaledDist, y: target.y, z: target.z };
   }
 
-  // Unit direction × cosine distance
+  // Unit direction × scaled cosine distance
   return {
-    x: target.x + (dx / mag) * cosineDistance,
-    y: target.y + (dy / mag) * cosineDistance,
-    z: target.z + (dz / mag) * cosineDistance,
+    x: target.x + (dx / mag) * scaledDist,
+    y: target.y + (dy / mag) * scaledDist,
+    z: target.z + (dz / mag) * scaledDist,
   };
 }
 
@@ -255,11 +266,12 @@ export async function generatePuzzle(puzzleSet: { target: string; clues: string[
   const embeddingVectors: Record<string, number[]> = {};
   allWords.forEach((w, i) => { embeddingVectors[w] = vectors[i]; });
 
-  // Project every word through the global PCA
-  const points = allWords.map((word, i) => ({
-    word,
-    ...projectTo3D(vectors[i], pca),
-  }));
+  // Project every word through the global PCA and apply COORD_SCALE so
+  // clue/target positions live in the same scale as guess distances.
+  const points = allWords.map((word, i) => {
+    const p = projectTo3D(vectors[i], pca);
+    return { word, x: p.x * COORD_SCALE, y: p.y * COORD_SCALE, z: p.z * COORD_SCALE };
+  });
 
   const clues = puzzleSet.clues.map((word) => {
     const pt = points.find((p) => p.word === word)!;
