@@ -5,6 +5,9 @@ import type { ReactNode } from "react";
 import * as THREE from "three";
 import type { EmbeddingPoint, GuessResult } from "@workspace/api-client-react";
 
+export type HintWord = { word: string; x: number; y: number; z: number; similarity: number };
+export type HintPhase = "idle" | "loading" | "shooting" | "pulsing" | "revealed";
+
 const TEMP_COLORS: Record<string, string> = {
   correct: "#ffd700",
   hot: "#ff4500",
@@ -46,6 +49,8 @@ class CanvasErrorBoundary extends Component<{ children: ReactNode; fallback: Rea
     return this.props.children;
   }
 }
+
+// ─── 3D components ──────────────────────────────────────────────────────────
 
 function PointSphere({
   position,
@@ -122,18 +127,89 @@ function Connectors({ clues, target }: { clues: EmbeddingPoint[]; target: Embedd
   );
 }
 
+const SUN_3D: [number, number, number] = [-45, 28, -20];
+
+function Sun3D() {
+  const meshRef = useRef<THREE.Mesh>(null);
+  useFrame(({ clock }) => {
+    if (meshRef.current) {
+      const t = clock.getElapsedTime();
+      meshRef.current.scale.setScalar(1 + Math.sin(t * 1.5) * 0.08);
+    }
+  });
+  return (
+    <group position={SUN_3D}>
+      <pointLight color="#FFD700" intensity={60} distance={120} decay={2} />
+      <mesh ref={meshRef}>
+        <sphereGeometry args={[1.8, 16, 16]} />
+        <meshStandardMaterial color="#FFD700" emissive="#FF8C00" emissiveIntensity={2} toneMapped={false} />
+      </mesh>
+    </group>
+  );
+}
+
+function AnimatedProjectile3D({ targetPos }: { targetPos: [number, number, number] }) {
+  const meshRef = useRef<THREE.Mesh>(null);
+  const startRef = useRef<number | null>(null);
+
+  useFrame(({ clock }) => {
+    if (startRef.current === null) startRef.current = clock.getElapsedTime();
+    const progress = Math.min((clock.getElapsedTime() - startRef.current) / 1.4, 1);
+    if (meshRef.current) {
+      meshRef.current.position.set(
+        SUN_3D[0] + (targetPos[0] - SUN_3D[0]) * progress,
+        SUN_3D[1] + (targetPos[1] - SUN_3D[1]) * progress,
+        SUN_3D[2] + (targetPos[2] - SUN_3D[2]) * progress
+      );
+      meshRef.current.visible = progress < 1;
+    }
+  });
+
+  return (
+    <mesh ref={meshRef} position={SUN_3D}>
+      <sphereGeometry args={[0.3, 8, 8]} />
+      <meshStandardMaterial color="#FFD700" emissive="#FFD700" emissiveIntensity={4} toneMapped={false} />
+    </mesh>
+  );
+}
+
+function SonarRing3D({ position, delay = 0 }: { position: [number, number, number]; delay?: number }) {
+  const meshRef = useRef<THREE.Mesh>(null);
+  const matRef = useRef<THREE.MeshBasicMaterial>(null);
+
+  useFrame(({ clock }) => {
+    const t = ((clock.getElapsedTime() + delay) % 2) / 2;
+    if (meshRef.current) {
+      const s = 1 + t * 8;
+      meshRef.current.scale.set(s, s, 1);
+    }
+    if (matRef.current) matRef.current.opacity = Math.max(0, 1 - t * 1.6);
+  });
+
+  return (
+    <mesh ref={meshRef} position={position} rotation={[Math.PI / 2, 0, 0]}>
+      <torusGeometry args={[0.28, 0.025, 6, 48]} />
+      <meshBasicMaterial ref={matRef} color="#FFD700" transparent opacity={1} />
+    </mesh>
+  );
+}
+
 function Scene3D({
   clues,
   target,
   guesses,
   solved,
   modelReady,
+  hintWords,
+  hintPhase,
 }: {
   clues: EmbeddingPoint[];
   target: EmbeddingPoint | null;
   guesses: GuessResult[];
   solved: boolean;
   modelReady: boolean;
+  hintWords?: HintWord[];
+  hintPhase?: HintPhase;
 }) {
   if (!modelReady) {
     return (
@@ -147,6 +223,10 @@ function Scene3D({
     );
   }
 
+  const targetPos3D: [number, number, number] = target
+    ? [target.x * 3, target.y * 3, target.z * 3]
+    : [0, 0, 0];
+
   return (
     <Canvas camera={{ position: [5, 5, 8] }} gl={{ antialias: true }}>
       <color attach="background" args={["#05070a"]} />
@@ -154,9 +234,23 @@ function Scene3D({
       <ambientLight intensity={0.5} />
       <pointLight position={[10, 10, 10]} intensity={1} />
 
+      <Sun3D />
+
+      {target && hintPhase === "shooting" && (
+        <AnimatedProjectile3D targetPos={targetPos3D} />
+      )}
+
+      {target && (hintPhase === "pulsing" || hintPhase === "revealed") && (
+        <>
+          <SonarRing3D position={targetPos3D} delay={0} />
+          <SonarRing3D position={targetPos3D} delay={0.67} />
+          <SonarRing3D position={targetPos3D} delay={1.33} />
+        </>
+      )}
+
       {target && (
         <PointSphere
-          position={[target.x * 3, target.y * 3, target.z * 3]}
+          position={targetPos3D}
           color={solved ? TEMP_COLORS.correct : "#ffffff"}
           label={solved ? target.word : "?"}
           pulse={!solved}
@@ -188,6 +282,17 @@ function Scene3D({
         />
       ))}
 
+      {hintPhase === "revealed" &&
+        hintWords?.map((hw, i) => (
+          <PointSphere
+            key={`hint-${i}`}
+            position={[hw.x * 3, hw.y * 3, hw.z * 3]}
+            color="#FFD700"
+            label={hw.word}
+            size={0.13}
+          />
+        ))}
+
       <OrbitControls
         makeDefault
         autoRotate={!solved}
@@ -199,31 +304,39 @@ function Scene3D({
   );
 }
 
-// Isometric projection: maps (x,y,z) → 2D screen coords using all 3 axes
+// ─── 2D isometric components ─────────────────────────────────────────────────
+
 function isoProject(x: number, y: number, z: number) {
-  const angle = Math.PI / 6; // 30°
+  const angle = Math.PI / 6;
   return {
     sx: (x - z) * Math.cos(angle),
     sy: -(y - (x + z) * Math.sin(angle)),
   };
 }
 
+const SUN_SVG = { x: 58, y: 448 };
+const SUN_R = 16;
+const SUN_RAY_ANGLES = [0, 45, 90, 135, 180, 225, 270, 315];
+
 function Scene2D({
   clues,
   target,
   guesses,
   solved,
+  hintWords,
+  hintPhase,
 }: {
   clues: EmbeddingPoint[];
   target: EmbeddingPoint | null;
   guesses: GuessResult[];
   solved: boolean;
+  hintWords?: HintWord[];
+  hintPhase?: HintPhase;
 }) {
   const W = 700;
   const H = 520;
   const PAD = 60;
 
-  // Stable star field — generated once per mount
   const stars = useMemo(() =>
     Array.from({ length: 140 }, (_, i) => ({
       id: i,
@@ -233,20 +346,18 @@ function Scene2D({
       opacity: Math.random() * 0.55 + 0.1,
     })), []);
 
-  // Collect all points for auto-fit
   const allPoints = useMemo(() => {
     const pts: { x: number; y: number; z: number }[] = [
       ...clues,
       ...(target ? [target] : []),
       ...guesses,
+      ...(hintWords ?? []),
     ];
     return pts;
-  }, [clues, target, guesses]);
+  }, [clues, target, guesses, hintWords]);
 
-  // Compute projected coords for every point, then build a scale/offset that
-  // fits all of them within [PAD, W-PAD] × [PAD, H-PAD]
   const project = useMemo(() => {
-    if (allPoints.length === 0) return (x: number, y: number, z: number) => ({ cx: W / 2, cy: H / 2 });
+    if (allPoints.length === 0) return (_x: number, _y: number, _z: number) => ({ cx: W / 2, cy: H / 2 });
 
     const projected = allPoints.map((p) => isoProject(p.x, p.y, p.z));
     const sxMin = Math.min(...projected.map((p) => p.sx));
@@ -258,8 +369,6 @@ function Scene2D({
     const rangeY = syMax - syMin || 1;
     const scaleX = (W - PAD * 2) / rangeX;
     const scaleY = (H - PAD * 2) / rangeY;
-    // Cap zoom so tightly-clustered points don't fill the entire viewport —
-    // leaving visible empty space makes the spread feel real.
     const MAX_SCALE = 80;
     const scale = Math.min(scaleX, scaleY, MAX_SCALE);
 
@@ -275,11 +384,38 @@ function Scene2D({
     };
   }, [allPoints]);
 
-  // Sort guesses back-to-front by z for painter's algorithm
   const sortedGuesses = useMemo(
     () => [...guesses].sort((a, b) => a.z - b.z),
     [guesses]
   );
+
+  // Shoot-progress animation (0→1 over 1.4s during 'shooting' phase)
+  const [shootProgress, setShootProgress] = useState(0);
+  const rafRef = useRef<number>(0);
+  const startRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (hintPhase === "pulsing" || hintPhase === "revealed") {
+      setShootProgress(1);
+      return;
+    }
+    if (hintPhase !== "shooting") {
+      setShootProgress(0);
+      return;
+    }
+    startRef.current = null;
+    const DURATION = 1400;
+    function step(ts: number) {
+      if (startRef.current === null) startRef.current = ts;
+      const p = Math.min((ts - startRef.current) / DURATION, 1);
+      setShootProgress(p);
+      if (p < 1) rafRef.current = requestAnimationFrame(step);
+    }
+    rafRef.current = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [hintPhase]);
+
+  const targetProj = target ? project(target.x, target.y, target.z) : null;
 
   return (
     <div className="w-full h-full flex items-center justify-center bg-[#05070a] relative overflow-hidden">
@@ -294,13 +430,10 @@ function Scene2D({
       </div>
 
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full max-w-3xl" style={{ maxHeight: "85vh" }}>
-        {/* Axis guides to show the 3D nature */}
+        {/* Axis guides */}
         <g opacity={0.06}>
-          {/* X axis */}
           {(() => { const o = project(0,0,0); const e = project(0.8,0,0); return <line x1={o.cx} y1={o.cy} x2={e.cx} y2={e.cy} stroke="#ff6666" strokeWidth={1}/> })()}
-          {/* Y axis */}
           {(() => { const o = project(0,0,0); const e = project(0,0.8,0); return <line x1={o.cx} y1={o.cy} x2={e.cx} y2={e.cy} stroke="#66ff66" strokeWidth={1}/> })()}
-          {/* Z axis */}
           {(() => { const o = project(0,0,0); const e = project(0,0,0.8); return <line x1={o.cx} y1={o.cy} x2={e.cx} y2={e.cy} stroke="#6666ff" strokeWidth={1}/> })()}
         </g>
 
@@ -318,7 +451,6 @@ function Scene2D({
         {sortedGuesses.map((g, i) => {
           const { cx, cy } = project(g.x, g.y, g.z);
           const color = TEMP_COLORS_2D[g.temperature] || "#fff";
-          // z in [-1,1]: closer z (higher) = slightly larger
           const depthScale = 0.85 + (g.z + 1) * 0.15;
           const r = (g.isCorrect ? 11 : 6) * depthScale;
           return (
@@ -346,9 +478,24 @@ function Scene2D({
           );
         })}
 
+        {/* Hint words (revealed) */}
+        {hintPhase === "revealed" && hintWords?.map((hw, i) => {
+          const { cx, cy } = project(hw.x, hw.y, hw.z);
+          return (
+            <g key={`hint-${i}`}>
+              <circle cx={cx} cy={cy} r={8} fill="#FFD700" fillOpacity={0.22} stroke="#FFD700" strokeWidth={1.5} strokeOpacity={0.8} />
+              <circle cx={cx} cy={cy} r={3.5} fill="#FFD700" fillOpacity={0.9} />
+              <text x={cx} y={cy - 13} textAnchor="middle" fill="#FFD700"
+                fontSize={10} fontFamily="monospace" fontWeight="bold" opacity={0.95}>
+                {hw.word}
+              </text>
+            </g>
+          );
+        })}
+
         {/* Target */}
-        {target && (() => {
-          const { cx, cy } = project(target.x, target.y, target.z);
+        {target && targetProj && (() => {
+          const { cx, cy } = targetProj;
           const color = solved ? "#ffd700" : "#ffffff";
           return (
             <g>
@@ -361,6 +508,63 @@ function Scene2D({
             </g>
           );
         })()}
+
+        {/* Sonar pulse rings at target (pulsing / revealed) */}
+        {targetProj && (hintPhase === "pulsing" || hintPhase === "revealed") && (
+          <>
+            {[0, 0.65, 1.3].map((delay, i) => (
+              <circle key={i} cx={targetProj.cx} cy={targetProj.cy} r={14}
+                fill="none" stroke="#FFD700" strokeWidth={1.5} opacity={0}>
+                <animate attributeName="r" from="14" to="85" dur="1.9s" begin={`${delay}s`} repeatCount="indefinite" />
+                <animate attributeName="opacity" from="0.85" to="0" dur="1.9s" begin={`${delay}s`} repeatCount="indefinite" />
+              </circle>
+            ))}
+          </>
+        )}
+
+        {/* Solar projectile: line from sun to target */}
+        {targetProj && (hintPhase === "shooting" || hintPhase === "pulsing" || hintPhase === "revealed") && (() => {
+          const endX = SUN_SVG.x + (targetProj.cx - SUN_SVG.x) * shootProgress;
+          const endY = SUN_SVG.y + (targetProj.cy - SUN_SVG.y) * shootProgress;
+          const isMoving = hintPhase === "shooting" && shootProgress < 1;
+          return (
+            <g>
+              <line x1={SUN_SVG.x} y1={SUN_SVG.y} x2={endX} y2={endY}
+                stroke="#FFD700" strokeWidth={1.8} strokeOpacity={0.75} />
+              {isMoving && (
+                <circle cx={endX} cy={endY} r={4.5} fill="#FFD700" opacity={0.95}>
+                  <animate attributeName="r" values="3;6;3" dur="0.3s" repeatCount="indefinite" />
+                </circle>
+              )}
+            </g>
+          );
+        })()}
+
+        {/* Sun — always visible when data is loaded */}
+        {allPoints.length > 0 && (
+          <g>
+            {/* Glow halo */}
+            <circle cx={SUN_SVG.x} cy={SUN_SVG.y} r={SUN_R * 1.9} fill="#FFD700" fillOpacity={0.08} />
+            {/* Core */}
+            <circle cx={SUN_SVG.x} cy={SUN_SVG.y} r={SUN_R * 0.62} fill="#FFD700" fillOpacity={0.92} />
+            {/* Outer ring */}
+            <circle cx={SUN_SVG.x} cy={SUN_SVG.y} r={SUN_R} fill="none" stroke="#FFD700" strokeWidth={1} strokeOpacity={0.35} />
+            {/* Rays */}
+            {SUN_RAY_ANGLES.map((angle) => {
+              const rad = (angle * Math.PI) / 180;
+              const inner = SUN_R * 0.78;
+              const outer = SUN_R * 1.55;
+              return (
+                <line key={angle}
+                  x1={SUN_SVG.x + Math.cos(rad) * inner}
+                  y1={SUN_SVG.y + Math.sin(rad) * inner}
+                  x2={SUN_SVG.x + Math.cos(rad) * outer}
+                  y2={SUN_SVG.y + Math.sin(rad) * outer}
+                  stroke="#FFD700" strokeWidth={1.5} strokeOpacity={0.55} />
+              );
+            })}
+          </g>
+        )}
 
         {/* Axis labels */}
         <g opacity={0.18} fontSize={8} fontFamily="monospace" fill="white">
@@ -383,12 +587,16 @@ export function Scene({
   guesses,
   solved,
   modelReady,
+  hintWords,
+  hintPhase,
 }: {
   clues: EmbeddingPoint[];
   target: EmbeddingPoint | null;
   guesses: GuessResult[];
   solved: boolean;
   modelReady: boolean;
+  hintWords?: HintWord[];
+  hintPhase?: HintPhase;
 }) {
   const [webglSupported, setWebglSupported] = useState<boolean | null>(null);
 
@@ -404,7 +612,8 @@ export function Scene({
     return (
       <div className="w-full h-full">
         {modelReady ? (
-          <Scene2D clues={clues} target={target} guesses={guesses} solved={solved} />
+          <Scene2D clues={clues} target={target} guesses={guesses} solved={solved}
+            hintWords={hintWords} hintPhase={hintPhase} />
         ) : (
           <div className="w-full h-full flex items-center justify-center bg-[#05070a]">
             <div className="text-blue-300 font-mono text-sm animate-pulse">Loading embedding model...</div>
@@ -415,7 +624,8 @@ export function Scene({
   }
 
   const fallback = (
-    <Scene2D clues={clues} target={target} guesses={guesses} solved={solved} />
+    <Scene2D clues={clues} target={target} guesses={guesses} solved={solved}
+      hintWords={hintWords} hintPhase={hintPhase} />
   );
 
   return (
@@ -426,6 +636,8 @@ export function Scene({
         guesses={guesses}
         solved={solved}
         modelReady={modelReady}
+        hintWords={hintWords}
+        hintPhase={hintPhase}
       />
     </CanvasErrorBoundary>
   );

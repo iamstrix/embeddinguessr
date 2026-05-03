@@ -3,12 +3,13 @@ import { useCreateSession, useSubmitSessionGuess, useCreateEndlessPuzzle } from 
 import type { Puzzle, GameSession } from "@workspace/api-client-react";
 import { getDeviceId } from "@/lib/device";
 import { Scene } from "@/components/scene";
+import type { HintWord, HintPhase } from "@/components/scene";
 import { Layout } from "@/components/layout";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { motion, AnimatePresence } from "framer-motion";
-import { Trophy, Send, RefreshCw, Infinity } from "lucide-react";
+import { Trophy, Send, RefreshCw, Infinity, Sun } from "lucide-react";
 
 const TEMP_COLORS: Record<string, string> = {
   correct: "bg-yellow-400",
@@ -25,6 +26,8 @@ export default function Endless() {
   const [puzzle, setPuzzle] = useState<Puzzle | null>(null);
   const [session, setSession] = useState<GameSession | null>(null);
   const [isStarting, setIsStarting] = useState(false);
+  const [hintPhase, setHintPhase] = useState<HintPhase>("idle");
+  const [hintWords, setHintWords] = useState<HintWord[]>([]);
 
   useEffect(() => {
     setDeviceId(getDeviceId());
@@ -40,6 +43,8 @@ export default function Endless() {
     setPuzzle(null);
     setSession(null);
     setGuessInput("");
+    setHintPhase("idle");
+    setHintWords([]);
 
     createEndlessPuzzle(undefined, {
       onSuccess: (newPuzzle) => {
@@ -77,6 +82,26 @@ export default function Endless() {
     );
   };
 
+  const triggerHint = useCallback(async () => {
+    if (!puzzle || !session || hintPhase !== "idle") return;
+    setHintPhase("loading");
+    try {
+      const excludeWords = (session.guesses ?? []).map((g) => g.word);
+      const res = await fetch("/api/game/hint", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ puzzleId: puzzle.id, excludeWords }),
+      });
+      const data = await res.json();
+      setHintWords(data.hints ?? []);
+      setHintPhase("shooting");
+      setTimeout(() => setHintPhase("pulsing"), 1500);
+      setTimeout(() => setHintPhase("revealed"), 2350);
+    } catch {
+      setHintPhase("idle");
+    }
+  }, [puzzle, session, hintPhase]);
+
   const isSolved = session?.solved ?? false;
   const modelReady = !!puzzle;
   const sortedGuesses = session?.guesses
@@ -93,6 +118,8 @@ export default function Endless() {
             guesses={session?.guesses ?? []}
             solved={isSolved}
             modelReady={modelReady}
+            hintWords={hintWords}
+            hintPhase={hintPhase}
           />
         </div>
 
@@ -152,24 +179,42 @@ export default function Endless() {
                     </Button>
                   </div>
                 ) : (
-                  <form onSubmit={handleGuess} className="flex gap-2">
-                    <Input
-                      placeholder="Type a word..."
-                      value={guessInput}
-                      onChange={(e) => setGuessInput(e.target.value)}
-                      className="bg-black/50 border-white/20 text-white placeholder:text-white/40 focus-visible:ring-primary"
-                      disabled={isSubmitting}
-                      autoFocus
-                    />
+                  <>
+                    <form onSubmit={handleGuess} className="flex gap-2">
+                      <Input
+                        placeholder="Type a word..."
+                        value={guessInput}
+                        onChange={(e) => setGuessInput(e.target.value)}
+                        className="bg-black/50 border-white/20 text-white placeholder:text-white/40 focus-visible:ring-primary"
+                        disabled={isSubmitting}
+                        autoFocus
+                      />
+                      <Button
+                        type="submit"
+                        size="icon"
+                        disabled={isSubmitting || !guessInput.trim()}
+                        className="shrink-0 bg-primary text-primary-foreground hover:bg-primary/90"
+                      >
+                        <Send size={18} />
+                      </Button>
+                    </form>
+
                     <Button
-                      type="submit"
-                      size="icon"
-                      disabled={isSubmitting || !guessInput.trim()}
-                      className="shrink-0 bg-primary text-primary-foreground hover:bg-primary/90"
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={triggerHint}
+                      disabled={hintPhase !== "idle"}
+                      className="mt-2 w-full gap-2 border border-yellow-500/25 text-yellow-400/70 hover:bg-yellow-500/10 hover:text-yellow-300 hover:border-yellow-500/50 disabled:opacity-40 transition-colors"
                     >
-                      <Send size={18} />
+                      <Sun size={14} className={hintPhase === "loading" ? "animate-spin" : hintPhase === "shooting" ? "animate-pulse" : ""} />
+                      {hintPhase === "idle" && "Solar Hint"}
+                      {hintPhase === "loading" && "Charging..."}
+                      {hintPhase === "shooting" && "Firing..."}
+                      {hintPhase === "pulsing" && "Pulsing..."}
+                      {hintPhase === "revealed" && "Hints Revealed"}
                     </Button>
-                  </form>
+                  </>
                 )}
               </motion.div>
 
@@ -186,7 +231,7 @@ export default function Endless() {
                 <ScrollArea className="flex-1 p-4">
                   <div className="space-y-2">
                     <AnimatePresence>
-                      {sortedGuesses.length === 0 && (
+                      {sortedGuesses.length === 0 && hintPhase !== "revealed" && (
                         <motion.div
                           initial={{ opacity: 0 }}
                           animate={{ opacity: 1 }}
@@ -214,6 +259,33 @@ export default function Endless() {
                         </motion.div>
                       ))}
                     </AnimatePresence>
+
+                    {hintPhase === "revealed" && hintWords.length > 0 && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 6 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="mt-3 pt-3 border-t border-yellow-500/20"
+                      >
+                        <p className="text-xs font-mono text-yellow-500/60 mb-2 flex items-center gap-1.5">
+                          <Sun size={11} /> SOLAR HINTS
+                        </p>
+                        {hintWords.map((hw, i) => (
+                          <motion.div
+                            key={hw.word}
+                            initial={{ opacity: 0, x: -6 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: i * 0.15 }}
+                            className="flex items-center justify-between py-1.5 px-2 rounded bg-yellow-500/5 border border-yellow-500/10 mb-1"
+                          >
+                            <div className="flex items-center gap-2">
+                              <div className="w-2 h-2 rounded-full bg-yellow-400" />
+                              <span className="font-mono text-yellow-300 text-sm">{hw.word}</span>
+                            </div>
+                            <span className="text-xs font-mono text-yellow-500/70">{(hw.similarity * 100).toFixed(1)}%</span>
+                          </motion.div>
+                        ))}
+                      </motion.div>
+                    )}
                   </div>
                 </ScrollArea>
               </motion.div>
