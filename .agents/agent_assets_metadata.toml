@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "QNCo00mCBjOZUqlPZ2vKq"
+uri = "file://README.md"
+type = "text"
+title = "EmbeddinGuessr — README"
