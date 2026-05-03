@@ -499,18 +499,14 @@ components:
     EndlessSubmitRequest:
       type: object
       properties:
-        username:
-          type: string
-          description: Display name / account identifier. Auto-registers on first use.
-        password:
-          type: string
-          description: Password for this account. Must match on subsequent submissions.
         guessCount:
           type: integer
+        playerName:
+          type: string
+          description: Display name from the authenticated Clerk user.
       required:
-        - username
-        - password
         - guessCount
+        - playerName
 
     StreakInfo:
       type: object

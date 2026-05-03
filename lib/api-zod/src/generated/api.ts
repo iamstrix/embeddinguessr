@@ -112,17 +112,10 @@ export const GetEndlessLeaderboardResponse = zod.array(
  * @summary Submit an endless mode score
  */
 export const SubmitEndlessScoreBody = zod.object({
-  username: zod
-    .string()
-    .describe(
-      "Display name \/ account identifier. Auto-registers on first use.",
-    ),
-  password: zod
-    .string()
-    .describe(
-      "Password for this account. Must match on subsequent submissions.",
-    ),
   guessCount: zod.number(),
+  playerName: zod
+    .string()
+    .describe("Display name from the authenticated Clerk user."),
 });
 
 export const SubmitEndlessScoreResponse = zod.object({

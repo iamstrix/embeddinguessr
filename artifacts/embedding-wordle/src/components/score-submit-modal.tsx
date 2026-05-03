@@ -2,7 +2,7 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useSubmitLeaderboardScore, useGetStreak } from "@workspace/api-client-react";
 import { Trophy, Flame, X, Check, LogIn } from "lucide-react";
-import { useAuth } from "@/contexts/auth-context";
+import { useUser, useClerk } from "@clerk/react";
 
 interface ScoreSubmitModalProps {
   open: boolean;
@@ -21,18 +21,25 @@ export function ScoreSubmitModal({
   attemptCount,
   deviceId,
 }: ScoreSubmitModalProps) {
-  const { user, openLogin } = useAuth();
+  const { user, isSignedIn } = useUser();
+  const { openSignIn } = useClerk();
   const [submitted, setSubmitted] = useState(false);
   const [submittedRank, setSubmittedRank] = useState<number | null>(null);
 
   const { data: streak } = useGetStreak(deviceId || "unknown");
   const { mutate: submitScore, isPending } = useSubmitLeaderboardScore();
 
+  const displayName =
+    user?.fullName ||
+    user?.username ||
+    user?.primaryEmailAddress?.emailAddress?.split("@")[0] ||
+    "Player";
+
   const handleSubmit = () => {
-    if (!user || isPending) return;
+    if (!isSignedIn || isPending) return;
 
     submitScore(
-      { data: { sessionId, playerName: user.username } },
+      { data: { sessionId, playerName: displayName } },
       {
         onSuccess: (entry) => {
           setSubmitted(true);
@@ -117,18 +124,18 @@ export function ScoreSubmitModal({
                     Close
                   </button>
                 </motion.div>
-              ) : !user ? (
-                /* Not logged in */
+              ) : !isSignedIn ? (
+                /* Not signed in */
                 <div className="space-y-4 text-center">
                   <p className="text-white/50 font-mono text-sm leading-relaxed">
-                    Log in to submit your score to today's leaderboard.
+                    Sign in to submit your score to today's leaderboard.
                   </p>
                   <button
-                    onClick={() => { onClose(); openLogin(); }}
+                    onClick={() => { onClose(); openSignIn(); }}
                     className="w-full py-3 rounded-lg bg-primary hover:bg-primary/90 font-mono font-bold text-sm text-primary-foreground transition-colors flex items-center justify-center gap-2"
                   >
                     <LogIn size={15} />
-                    Log in to submit
+                    Sign in to submit
                   </button>
                   <button
                     onClick={onClose}
@@ -138,13 +145,13 @@ export function ScoreSubmitModal({
                   </button>
                 </div>
               ) : (
-                /* Logged in — one-click submit */
+                /* Signed in — one-click submit */
                 <div className="space-y-4">
                   <div className="flex items-center gap-3 py-3 px-4 rounded-xl bg-primary/5 border border-primary/15">
                     <Trophy size={16} className="text-primary shrink-0" />
                     <div className="text-left">
                       <p className="font-mono text-sm text-white/60">Submitting as</p>
-                      <p className="font-mono text-sm font-bold text-white">{user.username}</p>
+                      <p className="font-mono text-sm font-bold text-white">{displayName}</p>
                     </div>
                   </div>
 

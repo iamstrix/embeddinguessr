@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useSubmitEndlessScore } from "@workspace/api-client-react";
 import { Trophy, Infinity, X, Check, LogIn } from "lucide-react";
-import { useAuth } from "@/contexts/auth-context";
+import { useUser, useClerk } from "@clerk/react";
 
 interface EndlessScoreSubmitModalProps {
   open: boolean;
@@ -17,13 +17,20 @@ export function EndlessScoreSubmitModal({
   guessCount,
   targetWord,
 }: EndlessScoreSubmitModalProps) {
-  const { user, openLogin } = useAuth();
+  const { user, isSignedIn } = useUser();
+  const { openSignIn } = useClerk();
   const [submitted, setSubmitted] = useState(false);
   const [submittedRank, setSubmittedRank] = useState<number | null>(null);
   const [submittedStats, setSubmittedStats] = useState<{ gamesPlayed: number; avgGuesses: number } | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const { mutate: submitScore, isPending } = useSubmitEndlessScore();
+
+  const displayName =
+    user?.fullName ||
+    user?.username ||
+    user?.primaryEmailAddress?.emailAddress?.split("@")[0] ||
+    "Player";
 
   useEffect(() => {
     if (!open) {
@@ -35,11 +42,11 @@ export function EndlessScoreSubmitModal({
   }, [open]);
 
   const handleSubmit = () => {
-    if (!user || isPending) return;
+    if (!isSignedIn || isPending) return;
     setErrorMsg(null);
 
     submitScore(
-      { data: { username: user.username, password: user.password, guessCount } },
+      { data: { guessCount, playerName: displayName } },
       {
         onSuccess: (entry) => {
           setSubmitted(true);
@@ -48,7 +55,7 @@ export function EndlessScoreSubmitModal({
         },
         onError: (err: unknown) => {
           const msg = err instanceof Error ? err.message : "Something went wrong";
-          setErrorMsg(msg.includes("401") || msg.toLowerCase().includes("wrong") ? "Session expired. Please log in again." : "Something went wrong. Try again.");
+          setErrorMsg(msg.includes("401") ? "Session expired. Please sign in again." : "Something went wrong. Try again.");
         },
       },
     );
@@ -133,18 +140,18 @@ export function EndlessScoreSubmitModal({
                     Close
                   </button>
                 </motion.div>
-              ) : !user ? (
-                /* Not logged in */
+              ) : !isSignedIn ? (
+                /* Not signed in */
                 <div className="space-y-4 text-center">
                   <p className="text-white/50 font-mono text-sm leading-relaxed">
-                    Log in to record this score on the endless leaderboard.
+                    Sign in to record this score on the endless leaderboard.
                   </p>
                   <button
-                    onClick={() => { onClose(); openLogin(); }}
+                    onClick={() => { onClose(); openSignIn(); }}
                     className="w-full py-3 rounded-lg bg-primary hover:bg-primary/90 font-mono font-bold text-sm text-primary-foreground transition-colors flex items-center justify-center gap-2"
                   >
                     <LogIn size={15} />
-                    Log in to submit
+                    Sign in to submit
                   </button>
                   <button
                     onClick={onClose}
@@ -154,13 +161,13 @@ export function EndlessScoreSubmitModal({
                   </button>
                 </div>
               ) : (
-                /* Logged in — one-click submit */
+                /* Signed in — one-click submit */
                 <div className="space-y-4">
                   <div className="flex items-center gap-3 py-3 px-4 rounded-xl bg-primary/5 border border-primary/15">
                     <Trophy size={16} className="text-primary shrink-0" />
                     <div className="text-left flex-1">
                       <p className="font-mono text-sm text-white/60">Submitting as</p>
-                      <p className="font-mono text-sm font-bold text-white">{user.username}</p>
+                      <p className="font-mono text-sm font-bold text-white">{displayName}</p>
                     </div>
                     <div className="text-right">
                       <p className="font-mono text-xs text-white/40">this game</p>

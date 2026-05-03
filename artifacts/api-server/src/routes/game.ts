@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { eq, count, avg, sum, max, and, sql } from "drizzle-orm";
-import bcrypt from "bcryptjs";
-import { db, puzzlesTable, sessionsTable, wordEmbeddingsTable, streaksTable, endlessScoresTable, appUsersTable } from "@workspace/db";
+import { getAuth } from "@clerk/express";
+import { db, puzzlesTable, sessionsTable, wordEmbeddingsTable, streaksTable, endlessScoresTable } from "@workspace/db";
 import {
   SubmitGuessBody,
   CreateSessionBody,
@@ -132,7 +132,7 @@ router.post("/game/endless", async (req, res): Promise<void> => {
 router.get("/game/endless/leaderboard", async (req, res): Promise<void> => {
   const rows = await db
     .select({
-      appUserId: endlessScoresTable.appUserId,
+      clerkUserId: endlessScoresTable.clerkUserId,
       username: sql<string>`(array_agg(${endlessScoresTable.username} ORDER BY ${endlessScoresTable.createdAt} DESC))[1]`,
       gamesPlayed: count(),
       totalGuesses: sum(endlessScoresTable.guessCount),
@@ -140,7 +140,8 @@ router.get("/game/endless/leaderboard", async (req, res): Promise<void> => {
       lastPlayedAt: max(endlessScoresTable.createdAt),
     })
     .from(endlessScoresTable)
-    .groupBy(endlessScoresTable.appUserId)
+    .where(sql`${endlessScoresTable.clerkUserId} IS NOT NULL`)
+    .groupBy(endlessScoresTable.clerkUserId)
     .orderBy(avg(endlessScoresTable.guessCount))
     .limit(20);
 
@@ -157,58 +158,35 @@ router.get("/game/endless/leaderboard", async (req, res): Promise<void> => {
 });
 
 router.post("/game/endless/leaderboard/submit", async (req, res): Promise<void> => {
-  const { username, password, guessCount } = req.body as {
-    username: string;
-    password: string;
+  const auth = getAuth(req);
+  const clerkUserId = auth?.userId;
+
+  if (!clerkUserId) {
+    res.status(401).json({ error: "Authentication required to submit a score" });
+    return;
+  }
+
+  const { guessCount, playerName } = req.body as {
     guessCount: number;
+    playerName: string;
   };
 
-  const trimmedUsername = username?.trim().toLowerCase();
-
-  if (!trimmedUsername || !password || typeof guessCount !== "number" || guessCount < 1) {
-    res.status(400).json({ error: "username, password and guessCount are required" });
+  if (typeof guessCount !== "number" || guessCount < 1) {
+    res.status(400).json({ error: "guessCount must be a positive number" });
     return;
   }
 
-  if (trimmedUsername.length < 2 || trimmedUsername.length > 24) {
-    res.status(400).json({ error: "Username must be 2–24 characters" });
-    return;
-  }
+  const displayName = playerName?.trim().slice(0, 32) || "Anonymous";
 
-  // Find or create user
-  const [existingUser] = await db
-    .select()
-    .from(appUsersTable)
-    .where(eq(appUsersTable.username, trimmedUsername));
-
-  let userId: number;
-  if (existingUser) {
-    const valid = await bcrypt.compare(password, existingUser.passwordHash);
-    if (!valid) {
-      res.status(401).json({ error: "Wrong password for this username" });
-      return;
-    }
-    userId = existingUser.id;
-  } else {
-    const hash = await bcrypt.hash(password, 10);
-    const [newUser] = await db
-      .insert(appUsersTable)
-      .values({ username: trimmedUsername, passwordHash: hash })
-      .returning();
-    userId = newUser.id;
-  }
-
-  // Record this game's score
   await db.insert(endlessScoresTable).values({
-    appUserId: userId,
-    username: trimmedUsername,
+    clerkUserId,
+    username: displayName,
     guessCount,
   });
 
-  // Aggregate and rank
   const allRows = await db
     .select({
-      appUserId: endlessScoresTable.appUserId,
+      clerkUserId: endlessScoresTable.clerkUserId,
       username: sql<string>`(array_agg(${endlessScoresTable.username} ORDER BY ${endlessScoresTable.createdAt} DESC))[1]`,
       gamesPlayed: count(),
       totalGuesses: sum(endlessScoresTable.guessCount),
@@ -216,15 +194,16 @@ router.post("/game/endless/leaderboard/submit", async (req, res): Promise<void> 
       lastPlayedAt: max(endlessScoresTable.createdAt),
     })
     .from(endlessScoresTable)
-    .groupBy(endlessScoresTable.appUserId)
+    .where(sql`${endlessScoresTable.clerkUserId} IS NOT NULL`)
+    .groupBy(endlessScoresTable.clerkUserId)
     .orderBy(avg(endlessScoresTable.guessCount));
 
-  const rank = allRows.findIndex((r) => r.appUserId === userId) + 1;
-  const playerRow = allRows.find((r) => r.appUserId === userId);
+  const rank = allRows.findIndex((r) => r.clerkUserId === clerkUserId) + 1;
+  const playerRow = allRows.find((r) => r.clerkUserId === clerkUserId);
 
   res.json({
     rank,
-    username: trimmedUsername,
+    username: displayName,
     gamesPlayed: Number(playerRow?.gamesPlayed ?? 1),
     totalGuesses: Number(playerRow?.totalGuesses ?? guessCount),
     avgGuesses: parseFloat(Number(playerRow?.avgGuesses ?? guessCount).toFixed(2)),
@@ -520,15 +499,9 @@ router.post("/game/leaderboard/submit", async (req, res): Promise<void> => {
     return;
   }
 
-  // Verify Clerk auth if provided
-  let verifiedClerkId: string | null = null;
-  if (clerkUserId) {
-    const auth = getAuth(req as any);
-    const authUserId = auth?.userId;
-    if (authUserId && authUserId === clerkUserId) {
-      verifiedClerkId = authUserId;
-    }
-  }
+  // Use Clerk auth if the user is signed in
+  const auth = getAuth(req);
+  const verifiedClerkId: string | null = auth?.userId ?? null;
 
   const [updatedSession] = await db
     .update(sessionsTable)
