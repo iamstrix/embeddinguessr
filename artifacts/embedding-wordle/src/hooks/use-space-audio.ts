@@ -1,30 +1,89 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 
-// Chord voicings in Hz (open, stacked fifths / minor thirds)
-// Each array = [osc0, osc1, osc2, osc3, osc4, osc5]
-const VOICINGS = [
-  [55.0,  82.4,  110.0, 164.8, 220.0, 329.6], // Am
-  [73.4, 110.0,  146.8, 220.0, 293.7, 440.0], // Dm
-  [65.4,  98.0,  130.8, 196.0, 261.6, 392.0], // C
-  [82.4, 123.5,  164.8, 196.0, 246.9, 329.6], // Em
-];
-// LFO speeds per oscillator (Hz) — each voice breathes at its own rate
-const LFO_RATES = [0.031, 0.047, 0.019, 0.053, 0.037, 0.023];
-// LFO depth in Hz — subtle pitch wobble
-const LFO_DEPTHS = [0.4,   0.6,   0.5,   0.7,   0.5,   0.4];
-// Per-oscillator gain (bass is louder)
-const OSC_GAINS  = [0.18,  0.14,  0.13,  0.11,  0.09,  0.06];
+// ─── Design ───────────────────────────────────────────────────────────────────
+// Film-score space ambient: layered triangle-wave pads + slow melodic motif.
+// No close-frequency beating → no buzz.
+// Architecture:
+//   • Deep bass  — pure octaves (C1/C2), sine, heavily lowpassed
+//   • Mid pad    — triangle waves, wide voicing, long ADSR
+//   • High shimmer — very quiet sine pairs, slow tremolo
+//   • Melody     — stochastic A-minor pentatonic line, one note ~every 9s
+//   • Reverb     — three-tap delay feedback network
 
-const CHORD_INTERVAL = 22000; // ms between chord changes
+// Chord definitions for the mid pad layer (Hz, wide voicing)
+// All notes are separated by ≥ a minor third to avoid audible beating.
+const CHORDS: number[][] = [
+  [130.8, 220.0, 329.6, 493.9],  // Cmaj7 (C3, A3, E4, B4)
+  [110.0, 196.0, 293.7, 440.0],  // Am7   (A2, G3, D4, A4)
+  [87.3,  174.6, 261.6, 392.0],  // Fmaj  (F2, F3, C4, G4)
+  [98.0,  196.0, 293.7, 392.0],  // Gsus4 (G2, G3, D4, G4)
+];
+
+// A minor pentatonic: A3 C4 D4 E4 G4 A4 C5
+const MELODY_NOTES = [220, 261.6, 293.7, 329.6, 392, 440, 523.3];
+
+const CHORD_DURATION = 24000; // ms
+
+// Build a simple three-tap reverb; returns the input gain node
+function buildReverb(ctx: AudioContext, out: AudioNode): GainNode {
+  const input = ctx.createGain();
+  input.gain.value = 1;
+
+  [[0.55, 0.42], [0.72, 0.36], [0.91, 0.28]].forEach(([t, fb]) => {
+    const delay = ctx.createDelay(2);
+    delay.delayTime.value = t;
+    const fbg = ctx.createGain();
+    fbg.gain.value = fb;
+    delay.connect(fbg);
+    fbg.connect(delay);
+    const wet = ctx.createGain();
+    wet.gain.value = 0.22;
+    input.connect(delay);
+    delay.connect(wet);
+    wet.connect(out);
+  });
+
+  return input;
+}
+
+// Play one triangle-wave note with ADSR and optional route to reverb
+function playNote(
+  ctx: AudioContext,
+  freq: number,
+  volume: number,
+  attack: number,
+  decay: number,
+  sustain: number,
+  release: number,
+  dest: AudioNode,
+  start = ctx.currentTime,
+): OscillatorNode {
+  const osc = ctx.createOscillator();
+  osc.type = 'triangle';
+  osc.frequency.value = freq;
+
+  const env = ctx.createGain();
+  env.gain.setValueAtTime(0, start);
+  env.gain.linearRampToValueAtTime(volume, start + attack);
+  env.gain.linearRampToValueAtTime(volume * sustain, start + attack + decay);
+
+  osc.connect(env);
+  env.connect(dest);
+  osc.start(start);
+
+  // Return osc so caller can schedule stop / release
+  return osc;
+}
 
 export function useSpaceAudio() {
-  const ctxRef     = useRef<AudioContext | null>(null);
-  const masterRef  = useRef<GainNode | null>(null);
-  const oscsRef    = useRef<OscillatorNode[]>([]);
-  const chordIdxRef = useRef(0);
-  const chordTimer = useRef<ReturnType<typeof setInterval> | null>(null);
-  const startedRef = useRef(false);
-  const [muted, setMuted]   = useState(false);
+  const ctxRef       = useRef<AudioContext | null>(null);
+  const masterRef    = useRef<GainNode | null>(null);
+  const chordOscsRef = useRef<{ osc: OscillatorNode; env: GainNode }[]>([]);
+  const melodyTimer  = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const chordTimer   = useRef<ReturnType<typeof setInterval> | null>(null);
+  const chordIdxRef  = useRef(0);
+  const startedRef   = useRef(false);
+  const [muted, setMuted]     = useState(false);
   const [started, setStarted] = useState(false);
 
   const buildGraph = useCallback(() => {
@@ -34,96 +93,143 @@ export function useSpaceAudio() {
     const ctx = new AudioContext();
     ctxRef.current = ctx;
 
-    // ── Master gain ────────────────────────────────────────────
+    // ── Master output + highpass (cut sub-30Hz rumble) ────────────────────
     const master = ctx.createGain();
     master.gain.setValueAtTime(0, ctx.currentTime);
     masterRef.current = master;
 
-    // ── Reverb: two delay taps ─────────────────────────────────
-    const makeDelay = (t: number, fb: number) => {
-      const delay   = ctx.createDelay(2);
-      const fbGain  = ctx.createGain();
-      delay.delayTime.value   = t;
-      fbGain.gain.value       = fb;
-      delay.connect(fbGain);
-      fbGain.connect(delay);
-      return delay;
+    const hpf = ctx.createBiquadFilter();
+    hpf.type = 'highpass';
+    hpf.frequency.value = 35;
+    master.connect(hpf);
+    hpf.connect(ctx.destination);
+
+    // Reverb feeds directly to destination (bypassing highpass is fine for wet)
+    const reverb = buildReverb(ctx, ctx.destination);
+
+    // ── Deep bass — pure octaves, no beating ─────────────────────────────
+    [65.4, 130.8].forEach((f, i) => {
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.value = f;
+      const g = ctx.createGain();
+      g.gain.value = i === 0 ? 0.07 : 0.045;
+      const lpf = ctx.createBiquadFilter();
+      lpf.type = 'lowpass';
+      lpf.frequency.value = 220;
+      osc.connect(lpf);
+      lpf.connect(g);
+      g.connect(master);
+      osc.start();
+    });
+
+    // ── Mid pad — triangle waves, first chord ────────────────────────────
+    const startChord = (chordFreqs: number[], fadeDuration = 0) => {
+      // Fade out old oscs
+      chordOscsRef.current.forEach(({ osc, env }) => {
+        const t = ctx.currentTime;
+        env.gain.setTargetAtTime(0, t, fadeDuration > 0 ? fadeDuration / 4 : 0.1);
+        osc.stop(t + fadeDuration + 1);
+      });
+
+      const newOscs: { osc: OscillatorNode; env: GainNode }[] = [];
+      chordFreqs.forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        osc.type = 'triangle';
+        osc.frequency.value = freq;
+
+        // Micro-pitch LFO — very slow, very shallow (avoids beating)
+        const lfo = ctx.createOscillator();
+        lfo.type = 'sine';
+        lfo.frequency.value = 0.008 + i * 0.003; // 0.008–0.017 Hz
+        const lfoG = ctx.createGain();
+        lfoG.gain.value = freq * 0.0015; // ±0.15% — imperceptible as buzz
+        lfo.connect(lfoG);
+        lfoG.connect(osc.frequency);
+        lfo.start();
+
+        const env = ctx.createGain();
+        const targetVol = [0.11, 0.09, 0.08, 0.06][i] ?? 0.06;
+        env.gain.setValueAtTime(0, ctx.currentTime);
+        // Staggered attack — pads breathe in one by one
+        const atkDelay = i * 1.2;
+        env.gain.setTargetAtTime(targetVol, ctx.currentTime + atkDelay, fadeDuration > 0 ? 3.5 : 5);
+
+        osc.connect(env);
+        env.connect(master);
+        env.connect(reverb);
+        osc.start();
+        newOscs.push({ osc, env });
+      });
+      chordOscsRef.current = newOscs;
     };
-    const delay1 = makeDelay(0.42, 0.38);
-    const delay2 = makeDelay(0.68, 0.30);
-    const reverbGain = ctx.createGain();
-    reverbGain.gain.value = 0.35;
-    master.connect(delay1);
-    master.connect(delay2);
-    delay1.connect(reverbGain);
-    delay2.connect(reverbGain);
-    reverbGain.connect(ctx.destination);
-    master.connect(ctx.destination);
 
-    // ── Low-cut to keep it clean ───────────────────────────────
-    const hipass = ctx.createBiquadFilter();
-    hipass.type = 'highpass';
-    hipass.frequency.value = 40;
+    startChord(CHORDS[0]);
 
-    // ── Oscillators with LFO vibrato ───────────────────────────
-    const voicing = VOICINGS[0];
-    const oscs: OscillatorNode[] = [];
+    // ── Chord sequencer ──────────────────────────────────────────────────
+    chordTimer.current = setInterval(() => {
+      chordIdxRef.current = (chordIdxRef.current + 1) % CHORDS.length;
+      startChord(CHORDS[chordIdxRef.current], 6);
+    }, CHORD_DURATION);
 
-    voicing.forEach((freq, i) => {
-      const osc  = ctx.createOscillator();
-      osc.type   = 'sine';
+    // ── High shimmer — two quiet sines with slow tremolo ─────────────────
+    [[1046.5, 0.022], [1318.5, 0.016]].forEach(([f, vol], i) => {
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.value = f;
+
+      const trem = ctx.createOscillator();
+      trem.type = 'sine';
+      trem.frequency.value = 0.012 + i * 0.007;
+      const tremG = ctx.createGain();
+      tremG.gain.value = vol * 0.6;
+      trem.connect(tremG);
+
+      const g = ctx.createGain();
+      g.gain.value = vol;
+      tremG.connect(g.gain);
+
+      osc.connect(g);
+      g.connect(reverb);
+      osc.start();
+      trem.start();
+    });
+
+    // ── Stochastic melody — one note every 8–14 seconds ──────────────────
+    const scheduleMelodyNote = () => {
+      if (!ctxRef.current) return;
+      const c = ctxRef.current;
+      const freq = MELODY_NOTES[Math.floor(Math.random() * MELODY_NOTES.length)];
+      const now  = c.currentTime;
+
+      const osc = c.createOscillator();
+      osc.type  = 'triangle';
       osc.frequency.value = freq;
 
-      const lfo  = ctx.createOscillator();
-      lfo.type   = 'sine';
-      lfo.frequency.value = LFO_RATES[i];
+      const env = c.createGain();
+      env.gain.setValueAtTime(0, now);
+      env.gain.linearRampToValueAtTime(0.055, now + 0.6);  // soft attack
+      env.gain.setTargetAtTime(0.018, now + 1.2, 1.8);     // long decay
+      env.gain.setTargetAtTime(0, now + 5, 2.0);           // gentle release
 
-      const lfoG = ctx.createGain();
-      lfoG.gain.value = LFO_DEPTHS[i];
-      lfo.connect(lfoG);
-      lfoG.connect(osc.frequency);
+      osc.connect(env);
+      env.connect(reverb);
+      osc.start(now);
+      osc.stop(now + 10);
 
-      const gain = ctx.createGain();
-      gain.gain.value = OSC_GAINS[i] * 0.38; // master mix level
+      const nextIn = 8000 + Math.random() * 6000;
+      melodyTimer.current = setTimeout(scheduleMelodyNote, nextIn);
+    };
+    // First melody note after a short pause
+    melodyTimer.current = setTimeout(scheduleMelodyNote, 5000);
 
-      osc.connect(gain);
-      gain.connect(hipass);
-      hipass.connect(master);
-
-      osc.start();
-      lfo.start();
-      oscs.push(osc);
-    });
-    oscsRef.current = oscs;
-
-    // ── Subtle low-freq pulse (heartbeat) ─────────────────────
-    const pulse = ctx.createOscillator();
-    pulse.type = 'sine';
-    pulse.frequency.value = 0.6; // very slow
-    const pulseGain = ctx.createGain();
-    pulseGain.gain.value = 0.008;
-    pulse.connect(pulseGain);
-    pulseGain.connect(master.gain);
-    pulse.start();
-
-    // ── Fade in over 5 seconds ─────────────────────────────────
-    master.gain.setTargetAtTime(0.55, ctx.currentTime, 3.5);
-
-    // ── Chord scheduler ───────────────────────────────────────
-    chordTimer.current = setInterval(() => {
-      const ctx2 = ctxRef.current;
-      if (!ctx2) return;
-      chordIdxRef.current = (chordIdxRef.current + 1) % VOICINGS.length;
-      const nextVoicing = VOICINGS[chordIdxRef.current];
-      oscsRef.current.forEach((o, i) => {
-        o.frequency.setTargetAtTime(nextVoicing[i], ctx2.currentTime, 4.5);
-      });
-    }, CHORD_INTERVAL);
+    // ── Fade in the master over 6 seconds ────────────────────────────────
+    master.gain.setTargetAtTime(0.7, ctx.currentTime, 3.5);
 
     setStarted(true);
   }, []);
 
-  // ── Start on first user interaction ───────────────────────────
+  // ── Start on first user interaction ──────────────────────────────────────
   useEffect(() => {
     const handle = () => {
       buildGraph();
@@ -138,7 +244,7 @@ export function useSpaceAudio() {
     };
   }, [buildGraph]);
 
-  // ── M key toggle ──────────────────────────────────────────────
+  // ── M key mute toggle ─────────────────────────────────────────────────────
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key.toLowerCase() === 'm' && !['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) {
@@ -146,9 +252,7 @@ export function useSpaceAudio() {
           const next = !prev;
           const ctx  = ctxRef.current;
           const m    = masterRef.current;
-          if (ctx && m) {
-            m.gain.setTargetAtTime(next ? 0 : 0.55, ctx.currentTime, 0.4);
-          }
+          if (ctx && m) m.gain.setTargetAtTime(next ? 0 : 0.7, ctx.currentTime, 0.5);
           return next;
         });
       }
@@ -162,16 +266,15 @@ export function useSpaceAudio() {
       const next = !prev;
       const ctx  = ctxRef.current;
       const m    = masterRef.current;
-      if (ctx && m) {
-        m.gain.setTargetAtTime(next ? 0 : 0.55, ctx.currentTime, 0.4);
-      }
+      if (ctx && m) m.gain.setTargetAtTime(next ? 0 : 0.7, ctx.currentTime, 0.5);
       return next;
     });
   }, []);
 
   useEffect(() => {
     return () => {
-      if (chordTimer.current) clearInterval(chordTimer.current);
+      if (melodyTimer.current) clearTimeout(melodyTimer.current);
+      if (chordTimer.current)  clearInterval(chordTimer.current);
       ctxRef.current?.close();
     };
   }, []);
