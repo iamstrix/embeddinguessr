@@ -346,6 +346,41 @@ router.get("/game/stats", async (req, res): Promise<void> => {
   });
 });
 
+router.post("/game/black-hole", async (req, res): Promise<void> => {
+  const { puzzleId, excludeWords = [] } = req.body as { puzzleId: number; excludeWords: string[] };
+
+  const [puzzle] = await db.select().from(puzzlesTable).where(eq(puzzlesTable.id, puzzleId));
+  if (!puzzle) { res.status(404).json({ error: "Puzzle not found" }); return; }
+
+  const [targetEmb] = await db
+    .select()
+    .from(wordEmbeddingsTable)
+    .where(eq(wordEmbeddingsTable.word, puzzle.targetWord))
+    .limit(1);
+  if (!targetEmb) { res.status(500).json({ error: "Target not in library" }); return; }
+
+  const targetVec = targetEmb.embedding as number[];
+  const clueWords = (puzzle.clues as Array<{ word: string }>).map((c) => c.word);
+  const excludeSet = new Set([...excludeWords, ...clueWords, puzzle.targetWord]);
+
+  const allWords = await db.select().from(wordEmbeddingsTable);
+
+  const best = allWords
+    .filter((w) => !excludeSet.has(w.word))
+    .map((w) => ({
+      word: w.word,
+      x: w.x,
+      y: w.y,
+      z: w.z,
+      similarity: cosineSimilarity(w.embedding as number[], targetVec),
+    }))
+    .sort((a, b) => b.similarity - a.similarity)[0];
+
+  if (!best) { res.status(500).json({ error: "No word available" }); return; }
+
+  res.json(best);
+});
+
 router.post("/game/hint", async (req, res): Promise<void> => {
   const { puzzleId, excludeWords = [] } = req.body as { puzzleId: number; excludeWords: string[] };
 

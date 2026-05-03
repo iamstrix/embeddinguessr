@@ -1,14 +1,14 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useGetDailyPuzzle, useCreateSession, useSubmitSessionGuess } from "@workspace/api-client-react";
 import { getDeviceId } from "@/lib/device";
 import { Scene } from "@/components/scene";
-import type { HintWord, HintPhase } from "@/components/scene";
+import type { HintWord, HintPhase, BhPhase, BhRevealedWord } from "@/components/scene";
 import { Layout } from "@/components/layout";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { motion, AnimatePresence } from "framer-motion";
-import { Trophy, Send, Play, AlertCircle, Sun } from "lucide-react";
+import { Trophy, Send, Sun } from "lucide-react";
 import { Link } from "wouter";
 
 const TEMP_COLORS: Record<string, string> = {
@@ -20,17 +20,29 @@ const TEMP_COLORS: Record<string, string> = {
   freezing: "bg-cyan-200",
 };
 
+const BH_THRESHOLD = 1.5;
+
+function BhIcon() {
+  return (
+    <svg width="14" height="14" viewBox="-10 -10 20 20" fill="none">
+      <ellipse rx="9" ry="3.5" stroke="#a855f7" strokeWidth="1.2" opacity="0.85" />
+      <ellipse rx="6.5" ry="2.5" stroke="#7c3aed" strokeWidth="0.8" opacity="0.55" transform="rotate(60)" />
+      <circle r="3.5" fill="#0d0018" stroke="#4c1d95" strokeWidth="0.6" />
+    </svg>
+  );
+}
+
 export default function Home() {
   const [deviceId, setDeviceId] = useState("");
   const [guessInput, setGuessInput] = useState("");
   const [hintPhase, setHintPhase] = useState<HintPhase>("idle");
   const [hintWords, setHintWords] = useState<HintWord[]>([]);
+  const [bhPhase, setBhPhase] = useState<BhPhase>("idle");
+  const [bhRevealedWord, setBhRevealedWord] = useState<BhRevealedWord | null>(null);
 
-  useEffect(() => {
-    setDeviceId(getDeviceId());
-  }, []);
+  useEffect(() => { setDeviceId(getDeviceId()); }, []);
 
-  const { data: puzzle, isLoading: isLoadingPuzzle, refetch: refetchPuzzle } = useGetDailyPuzzle({
+  const { data: puzzle, isLoading: isLoadingPuzzle } = useGetDailyPuzzle({
     query: {
       refetchInterval: (data) => {
         if (data?.modelReady === false) return 3000;
@@ -54,11 +66,7 @@ export default function Home() {
     if (!guessInput.trim() || !session || !puzzle || isSubmitting) return;
     submitGuess(
       { sessionId: session.id, data: { word: guessInput.trim().toLowerCase(), puzzleId: puzzle.id } },
-      {
-        onSuccess: () => {
-          setGuessInput("");
-        }
-      }
+      { onSuccess: () => setGuessInput("") }
     );
   };
 
@@ -82,11 +90,40 @@ export default function Home() {
     }
   }, [puzzle, session, hintPhase]);
 
+  const bhEnergy = useMemo(() => {
+    const total = (session?.guesses ?? []).reduce((sum, g) => sum + g.similarityScore, 0);
+    return Math.min(1, total / BH_THRESHOLD);
+  }, [session?.guesses]);
+
+  const bhReady = bhEnergy >= 1;
+
+  const triggerBlackHole = useCallback(async () => {
+    if (!bhReady || bhPhase !== "idle" || !puzzle || !session) return;
+    setBhPhase("shooting");
+    const excludeWords = [
+      ...(session.guesses ?? []).map((g) => g.word),
+      ...hintWords.map((hw) => hw.word),
+    ];
+    fetch("/api/game/black-hole", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ puzzleId: puzzle.id, excludeWords }),
+    })
+      .then((r) => r.json())
+      .then((data) => setBhRevealedWord(data))
+      .catch(() => {});
+
+    setTimeout(() => setBhPhase("pulling"), 1400);
+    setTimeout(() => setBhPhase("exploding"), 2900);
+    setTimeout(() => setBhPhase("revealed"), 3600);
+  }, [bhReady, bhPhase, puzzle, session, hintWords]);
+
   const isLoading = isLoadingPuzzle || !puzzle;
   const modelReady = puzzle?.modelReady ?? false;
   const isSolved = session?.solved ?? false;
-
-  const sortedGuesses = session?.guesses ? [...session.guesses].sort((a, b) => a.distanceToTarget - b.distanceToTarget) : [];
+  const sortedGuesses = session?.guesses
+    ? [...session.guesses].sort((a, b) => a.distanceToTarget - b.distanceToTarget)
+    : [];
 
   return (
     <Layout>
@@ -100,6 +137,9 @@ export default function Home() {
             modelReady={modelReady}
             hintWords={hintWords}
             hintPhase={hintPhase}
+            bhPhase={bhPhase}
+            bhEnergy={bhEnergy}
+            bhRevealedWord={bhRevealedWord}
           />
         </div>
 
@@ -142,6 +182,7 @@ export default function Home() {
                       </Button>
                     </form>
 
+                    {/* Solar Hint */}
                     <Button
                       type="button"
                       variant="ghost"
@@ -157,6 +198,37 @@ export default function Home() {
                       {hintPhase === "pulsing" && "Pulsing..."}
                       {hintPhase === "revealed" && "Hints Revealed"}
                     </Button>
+
+                    {/* Black Hole */}
+                    <button
+                      type="button"
+                      onClick={triggerBlackHole}
+                      disabled={!bhReady || bhPhase !== "idle"}
+                      className={`relative mt-1 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-md text-sm font-medium border overflow-hidden transition-all duration-300 ${
+                        bhReady && bhPhase === "idle"
+                          ? "border-purple-500/50 text-purple-300 bg-purple-900/10 hover:bg-purple-900/20 cursor-pointer"
+                          : "border-purple-500/12 text-purple-400/30 cursor-default"
+                      }`}
+                    >
+                      {/* Pulsing void aura when ready */}
+                      {bhReady && bhPhase === "idle" && (
+                        <span className="pointer-events-none absolute inset-0 rounded-md border border-purple-500/40 animate-pulse" />
+                      )}
+                      {/* Energy fill bar */}
+                      <span
+                        className="pointer-events-none absolute inset-x-0 bottom-0 h-0.5 bg-gradient-to-r from-purple-900 via-purple-500 to-purple-300 transition-all duration-700"
+                        style={{ width: `${bhEnergy * 100}%` }}
+                      />
+                      <BhIcon />
+                      <span>
+                        {bhPhase === "idle" && !bhReady && `Black Hole ${Math.round(bhEnergy * 100)}%`}
+                        {bhPhase === "idle" && bhReady && "Black Hole"}
+                        {bhPhase === "shooting" && "Firing..."}
+                        {bhPhase === "pulling" && "Pulling..."}
+                        {bhPhase === "exploding" && "Imploding..."}
+                        {bhPhase === "revealed" && "Revealed ✦"}
+                      </span>
+                    </button>
                   </>
                 )}
               </motion.div>
@@ -172,7 +244,7 @@ export default function Home() {
                 <ScrollArea className="flex-1 p-4">
                   <div className="space-y-2">
                     <AnimatePresence>
-                      {sortedGuesses.length === 0 && hintPhase !== "revealed" && (
+                      {sortedGuesses.length === 0 && hintPhase !== "revealed" && bhPhase === "idle" && (
                         <motion.div
                           initial={{ opacity: 0 }}
                           animate={{ opacity: 1 }}
@@ -190,7 +262,7 @@ export default function Home() {
                         >
                           <div className="flex items-center gap-3">
                             <div className={`w-3 h-3 rounded-full shadow-[0_0_10px_rgba(255,255,255,0.2)] ${TEMP_COLORS[g.temperature]}`} />
-                            <span className={`font-mono ${g.isCorrect ? 'font-bold text-yellow-400' : 'text-white'}`}>{g.word}</span>
+                            <span className={`font-mono ${g.isCorrect ? "font-bold text-yellow-400" : "text-white"}`}>{g.word}</span>
                           </div>
                           <div className="text-xs font-mono text-white/50">
                             {(g.similarityScore * 100).toFixed(1)}%
@@ -223,6 +295,25 @@ export default function Home() {
                             <span className="text-xs font-mono text-yellow-500/70">{(hw.similarity * 100).toFixed(1)}%</span>
                           </motion.div>
                         ))}
+                      </motion.div>
+                    )}
+
+                    {bhPhase === "revealed" && bhRevealedWord && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 6, scale: 0.95 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        className="mt-3 pt-3 border-t border-purple-500/20"
+                      >
+                        <p className="text-xs font-mono text-purple-400/60 mb-2 flex items-center gap-1.5">
+                          <BhIcon /> BLACK HOLE REVEAL
+                        </p>
+                        <div className="flex items-center justify-between py-2 px-3 rounded-lg bg-purple-500/8 border border-purple-500/20">
+                          <div className="flex items-center gap-2">
+                            <div className="w-2 h-2 rounded-full bg-purple-400" />
+                            <span className="font-mono text-purple-200 font-bold">{bhRevealedWord.word}</span>
+                          </div>
+                          <span className="text-xs font-mono text-purple-400/70">{(bhRevealedWord.similarity * 100).toFixed(1)}%</span>
+                        </div>
                       </motion.div>
                     )}
                   </div>
