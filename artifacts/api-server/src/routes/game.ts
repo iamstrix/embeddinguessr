@@ -86,31 +86,38 @@ router.post("/game/guess", async (req, res): Promise<void> => {
   const similarity = cosineSimilarity(guessVec, targetVec);
   const distance = 1 - similarity;
 
-  let x = 0, y = 0, z = 0;
-  let totalWeight = 0;
-  for (const clue of clues) {
-    const clueVec = embeddingVectors[clue.word];
-    if (!clueVec) continue;
-    const sim = Math.max(0, cosineSimilarity(guessVec, clueVec));
-    x += clue.x * sim;
-    y += clue.y * sim;
-    z += clue.z * sim;
-    totalWeight += sim;
-  }
-
   const targetX = parseFloat(puzzle.targetX);
   const targetY = parseFloat(puzzle.targetY);
   const targetZ = parseFloat(puzzle.targetZ);
-  const targetSim = Math.max(0, similarity);
-  x += targetX * targetSim;
-  y += targetY * targetSim;
-  z += targetZ * targetSim;
-  totalWeight += targetSim;
 
-  if (totalWeight > 0) {
-    x /= totalWeight;
-    y /= totalWeight;
-    z /= totalWeight;
+  let x: number, y: number, z: number;
+
+  if (isCorrect) {
+    x = targetX;
+    y = targetY;
+    z = targetZ;
+  } else {
+    let totalWeight = 0;
+    x = 0; y = 0; z = 0;
+    for (const clue of clues) {
+      const clueVec = embeddingVectors[clue.word];
+      if (!clueVec) continue;
+      const sim = Math.max(0, cosineSimilarity(guessVec, clueVec));
+      x += clue.x * sim;
+      y += clue.y * sim;
+      z += clue.z * sim;
+      totalWeight += sim;
+    }
+    const targetSim = Math.max(0, similarity);
+    x += targetX * targetSim;
+    y += targetY * targetSim;
+    z += targetZ * targetSim;
+    totalWeight += targetSim;
+    if (totalWeight > 0) {
+      x /= totalWeight;
+      y /= totalWeight;
+      z /= totalWeight;
+    }
   }
 
   const temperature = isCorrect ? "correct" : getTemperature(distance);
@@ -120,7 +127,7 @@ router.post("/game/guess", async (req, res): Promise<void> => {
     x,
     y,
     z,
-    distanceToTarget: distance,
+    distanceToTarget: isCorrect ? 0 : distance,
     temperature,
     isCorrect,
     similarityScore: similarity,
@@ -221,25 +228,32 @@ router.post("/game/session/:sessionId/submit", async (req, res): Promise<void> =
   const similarity = cosineSimilarity(guessVec, targetVec);
   const distance = 1 - similarity;
 
-  let x = 0, y = 0, z = 0, totalWeight = 0;
-  for (const clue of clues) {
-    const clueVec = embeddingVectors[clue.word];
-    if (!clueVec) continue;
-    const sim = Math.max(0, cosineSimilarity(guessVec, clueVec));
-    x += clue.x * sim; y += clue.y * sim; z += clue.z * sim;
-    totalWeight += sim;
-  }
-  const targetSim = Math.max(0, similarity);
   const targetX = parseFloat(puzzle.targetX);
   const targetY = parseFloat(puzzle.targetY);
   const targetZ = parseFloat(puzzle.targetZ);
-  x += targetX * targetSim; y += targetY * targetSim; z += targetZ * targetSim;
-  totalWeight += targetSim;
-  if (totalWeight > 0) { x /= totalWeight; y /= totalWeight; z /= totalWeight; }
+
+  let x: number, y: number, z: number;
+  if (isCorrect) {
+    x = targetX; y = targetY; z = targetZ;
+  } else {
+    let totalWeight = 0;
+    x = 0; y = 0; z = 0;
+    for (const clue of clues) {
+      const clueVec = embeddingVectors[clue.word];
+      if (!clueVec) continue;
+      const sim = Math.max(0, cosineSimilarity(guessVec, clueVec));
+      x += clue.x * sim; y += clue.y * sim; z += clue.z * sim;
+      totalWeight += sim;
+    }
+    const targetSim = Math.max(0, similarity);
+    x += targetX * targetSim; y += targetY * targetSim; z += targetZ * targetSim;
+    totalWeight += targetSim;
+    if (totalWeight > 0) { x /= totalWeight; y /= totalWeight; z /= totalWeight; }
+  }
 
   const guessResult = {
     word: cleanWord, x, y, z,
-    distanceToTarget: distance,
+    distanceToTarget: isCorrect ? 0 : distance,
     temperature: isCorrect ? "correct" : getTemperature(distance),
     isCorrect, similarityScore: similarity,
   };
