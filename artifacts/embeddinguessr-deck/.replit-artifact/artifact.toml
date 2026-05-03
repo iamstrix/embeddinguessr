@@ -1,0 +1,31 @@
+kind = "slides"
+previewPath = "/embeddinguessr-deck/"
+title = "EmbeddinGuessr Presentation"
+version = "1.0.0"
+id = "artifacts/embeddinguessr-deck"
+router = "path"
+
+[[integratedSkills]]
+name = "slides"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/embeddinguessr-deck/" ]
+localPort = 19210
+
+[services.development]
+run = "pnpm --filter @workspace/embeddinguessr-deck run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/embeddinguessr-deck", "run", "build" ]
+publicDir = "artifacts/embeddinguessr-deck/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "19210"
+BASE_PATH = "/embeddinguessr-deck/"
