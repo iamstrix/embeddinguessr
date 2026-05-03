@@ -1,11 +1,15 @@
 import { Link, useLocation } from "wouter";
-import { LayoutDashboard, Trophy, BarChart2, Infinity, Volume2, VolumeX } from "lucide-react";
+import { LayoutDashboard, Trophy, BarChart2, Infinity, Volume2, VolumeX, LogIn, LogOut, User } from "lucide-react";
 import { useSpaceAudio } from "../hooks/use-space-audio";
 import { WelcomeScreen } from "./welcome-screen";
+import { useAuth } from "@/contexts/auth-context";
+import { useState } from "react";
 
 export function FloatingNav() {
   const [location] = useLocation();
   const { muted, toggleMute, started, volume, setVolume } = useSpaceAudio();
+  const { user, logout, openLogin } = useAuth();
+  const [showUserMenu, setShowUserMenu] = useState(false);
 
   return (
     <nav className="fixed top-4 right-4 z-50 flex gap-2 items-center">
@@ -22,7 +26,46 @@ export function FloatingNav() {
         <BarChart2 size={20} />
       </Link>
 
-      {/* Volume control — mute button + hover slider */}
+      {/* Auth button */}
+      {user ? (
+        <div className="relative">
+          <button
+            onClick={() => setShowUserMenu((v) => !v)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-full backdrop-blur-md border border-primary/40 bg-primary/10 text-primary hover:bg-primary/20 transition-colors font-mono text-xs font-semibold"
+          >
+            <User size={14} />
+            <span className="max-w-[80px] truncate">{user.username}</span>
+          </button>
+          {showUserMenu && (
+            <>
+              <div className="fixed inset-0 z-[49]" onClick={() => setShowUserMenu(false)} />
+              <div className="absolute right-0 top-full mt-2 z-50 bg-[#08090f] border border-white/10 rounded-xl shadow-2xl overflow-hidden min-w-[140px]">
+                <div className="px-4 py-3 border-b border-white/8">
+                  <p className="font-mono text-xs text-white/40 uppercase tracking-widest">Logged in as</p>
+                  <p className="font-mono text-sm text-white font-semibold truncate">{user.username}</p>
+                </div>
+                <button
+                  onClick={() => { logout(); setShowUserMenu(false); }}
+                  className="w-full flex items-center gap-2 px-4 py-3 font-mono text-sm text-white/60 hover:text-white hover:bg-white/5 transition-colors"
+                >
+                  <LogOut size={14} />
+                  Log out
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      ) : (
+        <button
+          onClick={openLogin}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-full backdrop-blur-md border border-white/10 bg-black/20 text-white/70 hover:bg-black/40 hover:text-white transition-colors font-mono text-xs font-semibold"
+        >
+          <LogIn size={14} />
+          Log in
+        </button>
+      )}
+
+      {/* Volume control */}
       <div className="relative group/vol">
         <button
           onClick={toggleMute}
@@ -38,7 +81,6 @@ export function FloatingNav() {
           {muted ? <VolumeX size={20} /> : <Volume2 size={20} />}
         </button>
 
-        {/* Volume slider — visible on hover */}
         <div className="absolute right-0 top-full mt-2 opacity-0 group-hover/vol:opacity-100 pointer-events-none group-hover/vol:pointer-events-auto transition-opacity duration-200 z-50">
           <div className="bg-black/80 backdrop-blur-md border border-white/10 rounded-xl px-3 py-3 flex flex-col items-center gap-2 shadow-xl">
             <span className="text-[9px] font-mono text-white/30 uppercase tracking-widest">Vol</span>

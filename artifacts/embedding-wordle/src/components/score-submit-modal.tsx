@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useSubmitLeaderboardScore, useGetStreak } from "@workspace/api-client-react";
-import { Trophy, Flame, X, Check } from "lucide-react";
+import { Trophy, Flame, X, Check, LogIn } from "lucide-react";
+import { useAuth } from "@/contexts/auth-context";
 
 interface ScoreSubmitModalProps {
   open: boolean;
@@ -20,21 +21,18 @@ export function ScoreSubmitModal({
   attemptCount,
   deviceId,
 }: ScoreSubmitModalProps) {
-  const [playerName, setPlayerName] = useState("");
+  const { user, openLogin } = useAuth();
   const [submitted, setSubmitted] = useState(false);
   const [submittedRank, setSubmittedRank] = useState<number | null>(null);
 
   const { data: streak } = useGetStreak(deviceId || "unknown");
   const { mutate: submitScore, isPending } = useSubmitLeaderboardScore();
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!playerName.trim() || isPending) return;
+  const handleSubmit = () => {
+    if (!user || isPending) return;
 
     submitScore(
-      {
-        data: { sessionId, playerName: playerName.trim() },
-      },
+      { data: { sessionId, playerName: user.username } },
       {
         onSuccess: (entry) => {
           setSubmitted(true);
@@ -119,32 +117,45 @@ export function ScoreSubmitModal({
                     Close
                   </button>
                 </motion.div>
-              ) : (
-                <div className="space-y-4">
-                  <p className="text-xs font-mono text-white/40 text-center uppercase tracking-widest">
-                    Add your name to the leaderboard
+              ) : !user ? (
+                /* Not logged in */
+                <div className="space-y-4 text-center">
+                  <p className="text-white/50 font-mono text-sm leading-relaxed">
+                    Log in to submit your score to today's leaderboard.
                   </p>
+                  <button
+                    onClick={() => { onClose(); openLogin(); }}
+                    className="w-full py-3 rounded-lg bg-primary hover:bg-primary/90 font-mono font-bold text-sm text-primary-foreground transition-colors flex items-center justify-center gap-2"
+                  >
+                    <LogIn size={15} />
+                    Log in to submit
+                  </button>
+                  <button
+                    onClick={onClose}
+                    className="w-full py-2 text-xs font-mono text-white/25 hover:text-white/50 transition-colors"
+                  >
+                    Skip — don't submit
+                  </button>
+                </div>
+              ) : (
+                /* Logged in — one-click submit */
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3 py-3 px-4 rounded-xl bg-primary/5 border border-primary/15">
+                    <Trophy size={16} className="text-primary shrink-0" />
+                    <div className="text-left">
+                      <p className="font-mono text-sm text-white/60">Submitting as</p>
+                      <p className="font-mono text-sm font-bold text-white">{user.username}</p>
+                    </div>
+                  </div>
 
-                  <form onSubmit={handleSubmit} className="space-y-3">
-                    <input
-                      type="text"
-                      value={playerName}
-                      onChange={(e) => setPlayerName(e.target.value.slice(0, 32))}
-                      placeholder="Your display name"
-                      maxLength={32}
-                      className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 font-mono text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-primary/50 focus:bg-primary/5 transition-colors"
-                      autoFocus
-                    />
-
-                    <button
-                      type="submit"
-                      disabled={!playerName.trim() || isPending}
-                      className="w-full py-3 rounded-lg bg-primary hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed font-mono font-bold text-sm text-primary-foreground transition-colors flex items-center justify-center gap-2"
-                    >
-                      <Trophy size={15} />
-                      {isPending ? "Submitting…" : "Submit score"}
-                    </button>
-                  </form>
+                  <button
+                    onClick={handleSubmit}
+                    disabled={isPending}
+                    className="w-full py-3 rounded-lg bg-primary hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed font-mono font-bold text-sm text-primary-foreground transition-colors flex items-center justify-center gap-2"
+                  >
+                    <Trophy size={15} />
+                    {isPending ? "Submitting…" : "Submit to leaderboard"}
+                  </button>
 
                   <button
                     onClick={onClose}

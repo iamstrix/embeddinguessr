@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useSubmitEndlessScore } from "@workspace/api-client-react";
-import { Trophy, Infinity, X, Check, User, Lock, Eye, EyeOff } from "lucide-react";
+import { Trophy, Infinity, X, Check, LogIn } from "lucide-react";
+import { useAuth } from "@/contexts/auth-context";
 
 interface EndlessScoreSubmitModalProps {
   open: boolean;
@@ -16,9 +17,7 @@ export function EndlessScoreSubmitModal({
   guessCount,
   targetWord,
 }: EndlessScoreSubmitModalProps) {
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
+  const { user, openLogin } = useAuth();
   const [submitted, setSubmitted] = useState(false);
   const [submittedRank, setSubmittedRank] = useState<number | null>(null);
   const [submittedStats, setSubmittedStats] = useState<{ gamesPlayed: number; avgGuesses: number } | null>(null);
@@ -35,49 +34,25 @@ export function EndlessScoreSubmitModal({
     }
   }, [open]);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const trimmed = username.trim().toLowerCase();
-    if (!trimmed || !password || isPending) return;
+  const handleSubmit = () => {
+    if (!user || isPending) return;
     setErrorMsg(null);
 
     submitScore(
-      {
-        data: { username: trimmed, password, guessCount },
-      },
+      { data: { username: user.username, password: user.password, guessCount } },
       {
         onSuccess: (entry) => {
           setSubmitted(true);
           setSubmittedRank(entry.rank);
           setSubmittedStats({ gamesPlayed: entry.gamesPlayed, avgGuesses: entry.avgGuesses });
-          const saved = JSON.parse(localStorage.getItem("endlessAuth") ?? "{}");
-          if (!saved.username) {
-            localStorage.setItem("endlessAuth", JSON.stringify({ username: trimmed }));
-          }
         },
         onError: (err: unknown) => {
-          const msg =
-            err instanceof Error ? err.message : "Something went wrong. Try again.";
-          if (msg.includes("401") || msg.toLowerCase().includes("wrong password")) {
-            setErrorMsg("Wrong password for that username. Try again.");
-          } else if (msg.includes("400")) {
-            setErrorMsg("Username must be 2–24 characters.");
-          } else {
-            setErrorMsg("Something went wrong. Try again.");
-          }
+          const msg = err instanceof Error ? err.message : "Something went wrong";
+          setErrorMsg(msg.includes("401") || msg.toLowerCase().includes("wrong") ? "Session expired. Please log in again." : "Something went wrong. Try again.");
         },
       },
     );
   };
-
-  useEffect(() => {
-    if (open) {
-      try {
-        const saved = JSON.parse(localStorage.getItem("endlessAuth") ?? "{}");
-        if (saved.username && !username) setUsername(saved.username);
-      } catch {}
-    }
-  }, [open]);
 
   return (
     <AnimatePresence>
@@ -158,74 +133,53 @@ export function EndlessScoreSubmitModal({
                     Close
                   </button>
                 </motion.div>
+              ) : !user ? (
+                /* Not logged in */
+                <div className="space-y-4 text-center">
+                  <p className="text-white/50 font-mono text-sm leading-relaxed">
+                    Log in to record this score on the endless leaderboard.
+                  </p>
+                  <button
+                    onClick={() => { onClose(); openLogin(); }}
+                    className="w-full py-3 rounded-lg bg-primary hover:bg-primary/90 font-mono font-bold text-sm text-primary-foreground transition-colors flex items-center justify-center gap-2"
+                  >
+                    <LogIn size={15} />
+                    Log in to submit
+                  </button>
+                  <button
+                    onClick={onClose}
+                    className="w-full py-2 text-xs font-mono text-white/25 hover:text-white/50 transition-colors"
+                  >
+                    Skip — don't submit
+                  </button>
+                </div>
               ) : (
+                /* Logged in — one-click submit */
                 <div className="space-y-4">
-                  <div className="text-center">
-                    <p className="text-xs font-mono text-white/40 uppercase tracking-widest">Submit to endless leaderboard</p>
-                    <p className="text-xs font-mono text-white/25 mt-1">New here? We'll create your account. Returning? We'll verify your password.</p>
+                  <div className="flex items-center gap-3 py-3 px-4 rounded-xl bg-primary/5 border border-primary/15">
+                    <Trophy size={16} className="text-primary shrink-0" />
+                    <div className="text-left flex-1">
+                      <p className="font-mono text-sm text-white/60">Submitting as</p>
+                      <p className="font-mono text-sm font-bold text-white">{user.username}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-mono text-xs text-white/40">this game</p>
+                      <p className="font-mono text-lg font-bold text-primary">{guessCount} <span className="text-xs font-normal text-white/40">guesses</span></p>
+                    </div>
                   </div>
 
-                  <form onSubmit={handleSubmit} className="space-y-3">
-                    <div className="relative">
-                      <User size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-white/25 pointer-events-none" />
-                      <input
-                        type="text"
-                        value={username}
-                        onChange={(e) => {
-                          setUsername(e.target.value.slice(0, 24));
-                          setErrorMsg(null);
-                        }}
-                        placeholder="Username"
-                        maxLength={24}
-                        autoComplete="username"
-                        className="w-full bg-white/5 border border-white/10 rounded-lg pl-9 pr-4 py-3 font-mono text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-primary/50 focus:bg-primary/5 transition-colors"
-                        autoFocus
-                      />
-                    </div>
+                  {errorMsg && (
+                    <p className="text-xs font-mono text-red-400 text-center">{errorMsg}</p>
+                  )}
 
-                    <div className="relative">
-                      <Lock size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-white/25 pointer-events-none" />
-                      <input
-                        type={showPassword ? "text" : "password"}
-                        value={password}
-                        onChange={(e) => {
-                          setPassword(e.target.value);
-                          setErrorMsg(null);
-                        }}
-                        placeholder="Password"
-                        autoComplete="current-password"
-                        className="w-full bg-white/5 border border-white/10 rounded-lg pl-9 pr-10 py-3 font-mono text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-primary/50 focus:bg-primary/5 transition-colors"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword((v) => !v)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-white/25 hover:text-white/50 transition-colors"
-                        tabIndex={-1}
-                      >
-                        {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
-                      </button>
-                    </div>
-
-                    {errorMsg && (
-                      <p className="text-xs font-mono text-red-400 text-center">{errorMsg}</p>
-                    )}
-
-                    <div className="flex items-center gap-2 py-2.5 px-3 rounded-lg bg-primary/5 border border-primary/15">
-                      <Trophy size={13} className="text-primary shrink-0" />
-                      <p className="text-xs font-mono text-white/50">
-                        This adds <span className="text-primary font-bold">{guessCount} guesses</span> to your endless total
-                      </p>
-                    </div>
-
-                    <button
-                      type="submit"
-                      disabled={!username.trim() || !password || isPending}
-                      className="w-full py-3 rounded-lg bg-primary hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed font-mono font-bold text-sm text-primary-foreground transition-colors flex items-center justify-center gap-2"
-                    >
-                      <Infinity size={15} />
-                      {isPending ? "Submitting…" : "Submit score"}
-                    </button>
-                  </form>
+                  <button
+                    onClick={handleSubmit}
+                    disabled={isPending}
+                    className="w-full py-3 rounded-lg bg-primary hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed font-mono font-bold text-sm text-primary-foreground transition-colors flex items-center justify-center gap-2"
+                  >
+                    <Infinity size={15} />
+                    {isPending ? "Submitting…" : "Submit score"}
+                  </button>
 
                   <button
                     onClick={onClose}

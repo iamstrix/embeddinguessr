@@ -2,6 +2,9 @@ import { Switch, Route, Router as WouterRouter } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { AuthProvider } from "@/contexts/auth-context";
+import { LoginModal } from "@/components/login-modal";
+import { useAuth } from "@/contexts/auth-context";
 import NotFound from "@/pages/not-found";
 import Home from "@/pages/home";
 import Leaderboard from "@/pages/leaderboard";
@@ -24,14 +27,22 @@ function Router() {
   );
 }
 
+function GlobalLoginModal() {
+  const { isLoginOpen, closeLogin } = useAuth();
+  return <LoginModal open={isLoginOpen} onClose={closeLogin} />;
+}
+
 function App() {
   return (
     <WouterRouter base={basePath}>
       <QueryClientProvider client={queryClient}>
-        <TooltipProvider>
-          <Router />
-        </TooltipProvider>
-        <Toaster />
+        <AuthProvider>
+          <TooltipProvider>
+            <Router />
+          </TooltipProvider>
+          <GlobalLoginModal />
+          <Toaster />
+        </AuthProvider>
       </QueryClientProvider>
     </WouterRouter>
   );
