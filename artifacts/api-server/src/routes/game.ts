@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { eq, desc, count, avg, and } from "drizzle-orm";
-import { db, puzzlesTable, sessionsTable } from "@workspace/db";
+import { db, puzzlesTable, sessionsTable, wordEmbeddingsTable } from "@workspace/db";
 import {
   SubmitGuessBody,
   CreateSessionBody,
@@ -13,14 +13,37 @@ import {
   cosineSimilarity,
   getTemperature,
   generatePuzzle,
-  getRandomPuzzleSet,
-  projectGuessTo3D,
+  projectTo3D,
   getGlobalPcaParams,
+  COORD_SCALE,
 } from "../lib/embeddings";
 import { randomUUID } from "crypto";
 
 const router: IRouter = Router();
 
+/** Resolve a guess word's 3D position.
+ *  Library words use their pre-computed fixed position (true semantic space).
+ *  Unknown words are projected on-the-fly using the same global PCA. */
+async function resolvePosition(
+  word: string,
+  guessVec: number[],
+  isCorrect: boolean,
+  targetX: number, targetY: number, targetZ: number
+): Promise<{ x: number; y: number; z: number }> {
+  if (isCorrect) return { x: targetX, y: targetY, z: targetZ };
+
+  const [lib] = await db
+    .select({ x: wordEmbeddingsTable.x, y: wordEmbeddingsTable.y, z: wordEmbeddingsTable.z })
+    .from(wordEmbeddingsTable)
+    .where(eq(wordEmbeddingsTable.word, word))
+    .limit(1);
+
+  if (lib) return { x: lib.x, y: lib.y, z: lib.z };
+
+  // Not in library — project on-the-fly into the same global space
+  const p = projectTo3D(guessVec, getGlobalPcaParams());
+  return { x: p.x * COORD_SCALE, y: p.y * COORD_SCALE, z: p.z * COORD_SCALE };
+}
 
 router.post("/game/endless", async (req, res): Promise<void> => {
   if (!isModelReady()) {
@@ -29,8 +52,7 @@ router.post("/game/endless", async (req, res): Promise<void> => {
   }
 
   try {
-    const puzzleSet = getRandomPuzzleSet();
-    const puzzle = await generatePuzzle(puzzleSet);
+    const puzzle = await generatePuzzle();
     const clues = puzzle.clues as Array<{ word: string; x: number; y: number; z: number }>;
 
     res.json({
@@ -105,7 +127,6 @@ router.post("/game/guess", async (req, res): Promise<void> => {
   }
 
   const isCorrect = cleanWord === puzzle.targetWord.toLowerCase();
-
   const embeddingVectors = puzzle.embeddingVectors as Record<string, number[]>;
   const targetVec = embeddingVectors[puzzle.targetWord];
 
@@ -124,24 +145,13 @@ router.post("/game/guess", async (req, res): Promise<void> => {
   const targetY = parseFloat(puzzle.targetY);
   const targetZ = parseFloat(puzzle.targetZ);
 
-  const target3D = { x: targetX, y: targetY, z: targetZ };
-  let x: number, y: number, z: number;
-  if (isCorrect) {
-    x = targetX; y = targetY; z = targetZ;
-  } else {
-    const pos = projectGuessTo3D(guessVec, distance, target3D, getGlobalPcaParams());
-    x = pos.x; y = pos.y; z = pos.z;
-  }
-
-  const temperature = isCorrect ? "correct" : getTemperature(distance);
+  const { x, y, z } = await resolvePosition(cleanWord, guessVec, isCorrect, targetX, targetY, targetZ);
 
   res.json({
     word: cleanWord,
-    x,
-    y,
-    z,
+    x, y, z,
     distanceToTarget: isCorrect ? 0 : distance,
-    temperature,
+    temperature: isCorrect ? "correct" : getTemperature(distance),
     isCorrect,
     similarityScore: similarity,
   });
@@ -244,20 +254,14 @@ router.post("/game/session/:sessionId/submit", async (req, res): Promise<void> =
   const targetY = parseFloat(puzzle.targetY);
   const targetZ = parseFloat(puzzle.targetZ);
 
-  const target3D = { x: targetX, y: targetY, z: targetZ };
-  let x: number, y: number, z: number;
-  if (isCorrect) {
-    x = targetX; y = targetY; z = targetZ;
-  } else {
-    const pos = projectGuessTo3D(guessVec, distance, target3D, getGlobalPcaParams());
-    x = pos.x; y = pos.y; z = pos.z;
-  }
+  const { x, y, z } = await resolvePosition(cleanWord, guessVec, isCorrect, targetX, targetY, targetZ);
 
   const guessResult = {
     word: cleanWord, x, y, z,
     distanceToTarget: isCorrect ? 0 : distance,
     temperature: isCorrect ? "correct" : getTemperature(distance),
-    isCorrect, similarityScore: similarity,
+    isCorrect,
+    similarityScore: similarity,
   };
 
   const currentGuesses = (session.guesses as unknown[]) ?? [];

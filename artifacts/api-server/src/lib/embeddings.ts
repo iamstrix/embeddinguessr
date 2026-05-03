@@ -1,4 +1,5 @@
 import { logger } from "./logger";
+import { sql } from "drizzle-orm";
 
 type EmbeddingFunction = (texts: string[], options?: { pooling: string; normalize: boolean }) => Promise<{ tolist: () => number[][] }>;
 
@@ -19,6 +20,7 @@ async function loadPipeline() {
     modelReady = true;
     logger.info("Embedding model ready");
     await computeGlobalPca();
+    await seedWordLibrary();
     await initializeDailyPuzzle();
   } catch (err) {
     logger.error({ err }, "Failed to load embedding model");
@@ -144,82 +146,120 @@ export function projectTo3D(vec: number[], pcaParams: PcaParams): { x: number; y
   };
 }
 
-/**
- * Project a guess word into 3D so its Euclidean distance from the target
- * equals exactly the cosine distance (1 - similarity).  This guarantees
- * the visual distance in the scene always matches the percentage shown.
- *
- * Direction is taken from the raw PCA projection (semantic direction stays
- * meaningful); only the magnitude is overridden by the cosine distance.
- */
-// All stored coordinates and guess distances are multiplied by this factor.
-// Increasing it spreads everything further apart in 3D space while keeping
-// relative proportions (and therefore the similarity percentages) the same.
+// All stored coordinates are multiplied by this factor to spread the space.
 export const COORD_SCALE = 5;
 
-export function projectGuessTo3D(
-  guessVec: number[],
-  cosineDistance: number,
-  target: { x: number; y: number; z: number },
-  pcaParams: PcaParams
-): { x: number; y: number; z: number } {
-  const raw = projectTo3D(guessVec, pcaParams);
-
-  // Scale the raw projection to the same space as the stored target coords
-  const rx = raw.x * COORD_SCALE;
-  const ry = raw.y * COORD_SCALE;
-  const rz = raw.z * COORD_SCALE;
-
-  const dx = rx - target.x;
-  const dy = ry - target.y;
-  const dz = rz - target.z;
-  const mag = Math.sqrt(dx * dx + dy * dy + dz * dz);
-
-  const scaledDist = cosineDistance * COORD_SCALE;
-
-  if (mag < 1e-9) {
-    return { x: target.x + scaledDist, y: target.y, z: target.z };
-  }
-
-  // Unit direction × scaled cosine distance
-  return {
-    x: target.x + (dx / mag) * scaledDist,
-    y: target.y + (dy / mag) * scaledDist,
-    z: target.z + (dz / mag) * scaledDist,
-  };
-}
-
-// Large, diverse reference vocabulary so PCA axes capture the full
-// shape of semantic space — not just the 4 puzzle words.
+// Reference vocabulary for PCA — diverse enough to orient the axes meaningfully.
 const REFERENCE_VOCABULARY = [
-  // Nature & elements
   "tree", "water", "fire", "earth", "sky", "mountain", "ocean", "river", "forest",
   "desert", "cloud", "rain", "wind", "snow", "sun", "moon", "flower", "grass", "stone", "cave",
-  // Animals
   "dog", "cat", "bird", "fish", "horse", "lion", "whale", "snake", "elephant", "wolf",
   "eagle", "dolphin", "tiger", "rabbit", "bear", "spider", "shark", "butterfly", "cow", "fox",
-  // Human & social
   "love", "war", "peace", "family", "friend", "king", "queen", "child", "soldier", "teacher",
   "doctor", "artist", "hero", "villain", "leader", "mother", "father", "servant", "hunter", "merchant",
-  // Emotions & abstract
   "happy", "sad", "angry", "afraid", "joy", "grief", "hope", "dream", "memory", "truth",
   "freedom", "justice", "power", "beauty", "wisdom", "chaos", "order", "mystery", "silence", "darkness",
-  // Science & technology
   "atom", "energy", "computer", "light", "gravity", "chemistry", "virus", "robot", "electricity", "medicine",
   "telescope", "rocket", "engine", "bridge", "weapon", "tool", "clock", "map", "ship", "wheel",
-  // Arts & culture
   "music", "painting", "poetry", "cinema", "dance", "theater", "sculpture", "novel", "song", "rhythm",
   "color", "canvas", "instrument", "camera", "keyboard", "library", "stage", "broadcast", "festival", "monument",
-  // Food & agriculture
   "bread", "sugar", "salt", "fruit", "meat", "wine", "coffee", "honey", "chocolate", "rice",
   "wheat", "corn", "apple", "milk", "butter", "vegetable", "spice", "feast", "hunger", "harvest",
-  // Sports & activity
   "running", "swimming", "football", "tennis", "climbing", "hunting", "fishing", "boxing", "archery", "race",
-  // Space & cosmos
-  "star", "galaxy", "planet", "universe", "infinity", "comet", "asteroid", "black hole", "nebula", "orbit",
-  // Materials & objects
+  "star", "galaxy", "planet", "universe", "infinity", "comet", "asteroid", "nebula", "orbit",
   "gold", "iron", "wood", "glass", "diamond", "silk", "sand", "ice", "smoke", "shadow",
   "crown", "sword", "shield", "ring", "mirror", "lantern", "coin", "throne", "gate", "tower",
+];
+
+// The full word library — pre-embedded at startup and stored in the DB.
+// All guesses on library words use their fixed position in this shared space.
+export const WORD_LIBRARY: string[] = [
+  // Animals
+  "ant", "ape", "bat", "bear", "bee", "bird", "bull", "butterfly", "cat", "cobra",
+  "crab", "crane", "crow", "deer", "dolphin", "dove", "dragon", "duck", "eagle", "elephant",
+  "falcon", "fish", "flamingo", "fly", "fox", "frog", "giraffe", "goat", "gorilla", "hawk",
+  "horse", "hound", "jellyfish", "kangaroo", "kitten", "lamb", "leopard", "lion", "lobster", "lynx",
+  "monkey", "moth", "mouse", "octopus", "owl", "panda", "parrot", "penguin", "pig", "pigeon",
+  "rabbit", "raven", "salmon", "seal", "shark", "sheep", "shrimp", "snake", "spider", "squid",
+  "swan", "tiger", "toad", "tortoise", "turtle", "vulture", "whale", "wolf", "worm", "zebra",
+  // Nature
+  "avalanche", "beach", "boulder", "branch", "canyon", "cave", "cliff", "cloud", "coast", "coral",
+  "creek", "crystal", "desert", "dew", "dune", "earthquake", "eclipse", "fern", "field", "fjord",
+  "flood", "fog", "forest", "geyser", "glacier", "gorge", "grass", "grove", "hail", "hill",
+  "horizon", "hurricane", "island", "jungle", "lake", "leaf", "lightning", "marsh", "meadow", "meteor",
+  "mist", "moon", "mountain", "mud", "oasis", "ocean", "petal", "plain", "plateau", "pond",
+  "puddle", "rain", "rainbow", "reef", "river", "rock", "root", "sand", "savanna", "seed",
+  "shadow", "shell", "shore", "sky", "sleet", "snow", "soil", "spring", "star", "stone",
+  "stream", "swamp", "tide", "tornado", "tsunami", "tundra", "valley", "vine", "volcano", "waterfall",
+  "wave", "wilderness", "wind",
+  // Food & drink
+  "apple", "avocado", "bacon", "banana", "bean", "berry", "biscuit", "bread", "broth", "butter",
+  "cake", "candy", "carrot", "cereal", "cheese", "cherry", "chicken", "chocolate", "cider", "coffee",
+  "cookie", "corn", "cream", "cucumber", "curry", "egg", "fudge", "garlic", "grape", "herb",
+  "honey", "ice", "jam", "juice", "lemon", "lime", "mango", "milk", "mint", "mushroom",
+  "noodle", "nut", "oat", "olive", "onion", "orange", "pasta", "peach", "pear", "pepper",
+  "pie", "pizza", "plum", "potato", "pretzel", "pudding", "pumpkin", "raisin", "rice", "salad",
+  "salmon", "salt", "sauce", "soup", "steak", "strawberry", "sugar", "sushi", "syrup", "tea",
+  "toast", "tomato", "tuna", "vinegar", "walnut", "wheat", "wine", "yogurt",
+  // People & society
+  "adult", "ancestor", "artist", "athlete", "banker", "boss", "brother", "citizen", "dancer", "daughter",
+  "doctor", "elder", "enemy", "explorer", "farmer", "father", "friend", "general", "ghost", "grandfather",
+  "grandmother", "guard", "guide", "hero", "hunter", "judge", "king", "knight", "lawyer", "leader",
+  "merchant", "minister", "monk", "mother", "neighbor", "nurse", "orphan", "parent", "peasant", "pilgrim",
+  "pioneer", "poet", "prince", "princess", "prisoner", "prophet", "queen", "rebel", "refugee", "rider",
+  "sailor", "saint", "scholar", "shepherd", "sister", "soldier", "son", "spy", "stranger", "student",
+  "teacher", "thief", "warrior", "widow", "witch", "wizard", "worker",
+  // Emotions & abstract
+  "ambition", "anger", "anxiety", "boredom", "chaos", "comfort", "courage", "curiosity", "desire", "dream",
+  "duty", "empathy", "envy", "faith", "fame", "fear", "freedom", "glory", "grief", "guilt",
+  "happiness", "harmony", "hatred", "hope", "horror", "humility", "imagination", "jealousy", "joy", "justice",
+  "kindness", "knowledge", "loneliness", "love", "loyalty", "luck", "mercy", "mystery", "nostalgia", "order",
+  "passion", "patience", "peace", "pleasure", "power", "pride", "purpose", "rage", "regret", "relief",
+  "sadness", "shame", "silence", "sorrow", "strength", "success", "surprise", "terror", "trust", "truth",
+  "victory", "virtue", "wisdom", "wonder", "worry",
+  // Objects & tools
+  "anchor", "anvil", "axe", "badge", "barrel", "basket", "battery", "bell", "belt", "blade",
+  "bomb", "book", "bottle", "bow", "bridge", "bullet", "camera", "candle", "cannon", "chain",
+  "chest", "clock", "coin", "compass", "crown", "curtain", "dagger", "diary", "drum", "engine",
+  "envelope", "flag", "flame", "flask", "gate", "gem", "glass", "globe", "hammer", "hook",
+  "jar", "key", "knife", "lamp", "lantern", "laser", "lens", "lock", "magnet", "map",
+  "mask", "medal", "mirror", "needle", "net", "paddle", "paper", "pen", "pipe", "plank",
+  "potion", "prism", "pump", "rope", "ruler", "sail", "scissors", "shield", "signal", "socket",
+  "spear", "staff", "sword", "telescope", "torch", "tower", "trap", "umbrella", "vault", "vial",
+  "wall", "wheel", "whip", "wire",
+  // Places & buildings
+  "airport", "arena", "barn", "basement", "castle", "cathedral", "cemetery", "city", "classroom", "cottage",
+  "court", "dungeon", "factory", "farm", "fortress", "garden", "harbor", "hospital", "hotel", "hut",
+  "kingdom", "laboratory", "library", "lighthouse", "market", "maze", "mine", "monastery", "museum", "palace",
+  "park", "pier", "plantation", "prison", "pyramid", "ruins", "sanctuary", "school", "shrine", "stadium",
+  "temple", "theater", "tomb", "tunnel", "university", "village", "warehouse", "well",
+  // Science & medicine
+  "acid", "alloy", "atom", "bacteria", "bone", "brain", "cell", "chemical", "circuit", "clone",
+  "comet", "crystal", "decay", "disease", "element", "enzyme", "fever", "fossil", "galaxy", "gene",
+  "gravity", "heart", "hormone", "infection", "ion", "laser", "liquid", "magnet", "membrane", "metal",
+  "microscope", "mineral", "molecule", "muscle", "nebula", "nerve", "nucleus", "orbit", "organ", "oxygen",
+  "particle", "photon", "plague", "planet", "plasma", "poison", "protein", "pulse", "radiation", "reaction",
+  "signal", "skeleton", "skull", "solar", "species", "spore", "surgery", "synapse", "tissue", "toxin",
+  "vaccine", "vein", "virus", "voltage", "wave",
+  // Arts & culture
+  "album", "anthem", "archive", "artifact", "ballet", "ballad", "canvas", "ceremony", "chord", "chorus",
+  "cinema", "comedy", "concert", "dance", "drama", "elegy", "epic", "exhibit", "fable", "fantasy",
+  "festival", "fiction", "film", "folklore", "fresco", "gallery", "genre", "harmony", "hymn", "idol",
+  "instrument", "legend", "lyric", "manuscript", "melody", "mural", "myth", "novel", "opera", "orchestra",
+  "painting", "parable", "poem", "portrait", "prose", "ritual", "romance", "sculpture", "sketch", "sonata",
+  "song", "story", "symphony", "tragedy", "verse",
+  // Sports & activities
+  "archery", "boxing", "chess", "climbing", "combat", "cycling", "diving", "duel", "expedition", "exploration",
+  "fencing", "fishing", "gymnastics", "hiking", "hunting", "jousting", "marathon", "meditation", "navigation",
+  "racing", "rowing", "sailing", "skiing", "soccer", "swimming", "tennis", "tournament", "wrestling",
+  // Space & cosmos
+  "asteroid", "atmosphere", "aurora", "black hole", "comet", "cosmos", "eclipse", "galaxy", "gravity",
+  "meteor", "nebula", "nova", "orbit", "planet", "satellite", "solar", "star", "supernova", "universe",
+  // Materials
+  "amber", "bronze", "carbon", "clay", "coal", "copper", "cotton", "diamond", "emerald", "flint",
+  "gold", "granite", "ice", "iron", "jade", "lava", "lead", "leather", "marble", "mercury",
+  "obsidian", "pearl", "platinum", "quartz", "ruby", "rust", "sapphire", "silver", "smoke", "steel",
+  "tin", "titanium", "wood",
 ];
 
 async function computeGlobalPca() {
@@ -227,6 +267,43 @@ async function computeGlobalPca() {
   const vectors = await getEmbeddings(REFERENCE_VOCABULARY);
   globalPcaParams = computePcaFromVectors(vectors);
   logger.info("Global PCA ready");
+}
+
+async function seedWordLibrary() {
+  const { db, wordEmbeddingsTable } = await import("@workspace/db");
+
+  const [{ count }] = await db
+    .select({ count: sql<number>`COUNT(*)::int` })
+    .from(wordEmbeddingsTable);
+
+  if (count > 0) {
+    logger.info({ count }, "Word library already seeded");
+    return;
+  }
+
+  const pca = getGlobalPcaParams();
+  const uniqueWords = [...new Set(WORD_LIBRARY)];
+  logger.info(`Seeding word library with ${uniqueWords.length} words...`);
+
+  const BATCH = 50;
+  for (let i = 0; i < uniqueWords.length; i += BATCH) {
+    const batch = uniqueWords.slice(i, i + BATCH);
+    const vectors = await getEmbeddings(batch);
+    const rows = batch.map((word, j) => {
+      const p = projectTo3D(vectors[j], pca);
+      return {
+        word,
+        embedding: vectors[j] as unknown as number[],
+        x: p.x * COORD_SCALE,
+        y: p.y * COORD_SCALE,
+        z: p.z * COORD_SCALE,
+      };
+    });
+    await db.insert(wordEmbeddingsTable).values(rows).onConflictDoNothing();
+    logger.info(`  seeded ${Math.min(i + BATCH, uniqueWords.length)} / ${uniqueWords.length}`);
+  }
+
+  logger.info("Word library seeding complete");
 }
 
 export function getTemperature(distance: number): "freezing" | "cold" | "cool" | "warm" | "hot" | "correct" {
@@ -238,63 +315,85 @@ export function getTemperature(distance: number): "freezing" | "cold" | "cool" |
   return "freezing";
 }
 
-const PUZZLE_SETS: Array<{ target: string; clues: string[] }> = [
-  { target: "tree", clues: ["apple", "dirt", "forest"] },
-  { target: "ocean", clues: ["fish", "sand", "wave"] },
-  { target: "fire", clues: ["smoke", "ice", "candle"] },
-  { target: "music", clues: ["silence", "dance", "emotion"] },
-  { target: "bread", clues: ["butter", "grain", "hunger"] },
-  { target: "moon", clues: ["tide", "night", "rocket"] },
-  { target: "gold", clues: ["mine", "crown", "value"] },
-  { target: "storm", clues: ["calm", "lightning", "shelter"] },
-  { target: "river", clues: ["mountain", "sea", "boat"] },
-  { target: "dream", clues: ["sleep", "reality", "wish"] },
-  { target: "diamond", clues: ["coal", "ring", "hardness"] },
-  { target: "shadow", clues: ["light", "darkness", "form"] },
-  { target: "honey", clues: ["flower", "bee", "sweetness"] },
-  { target: "star", clues: ["night", "galaxy", "wish"] },
-  { target: "sword", clues: ["shield", "war", "knight"] },
-];
+function pickClueAt(
+  candidates: Array<{ word: string; x: number; y: number; z: number; embedding: number[]; sim: number }>,
+  targetSim: number,
+  exclude: string[]
+) {
+  const pool = candidates.filter((c) => !exclude.includes(c.word));
+  if (pool.length === 0) return null;
+  return pool.reduce((best, c) =>
+    Math.abs(c.sim - targetSim) < Math.abs(best.sim - targetSim) ? c : best
+  );
+}
 
-export async function generatePuzzle(puzzleSet: { target: string; clues: string[] }, date?: string) {
-  const { db, puzzlesTable } = await import("@workspace/db");
+export async function generatePuzzle(date?: string) {
+  const { db, puzzlesTable, wordEmbeddingsTable } = await import("@workspace/db");
   const pca = getGlobalPcaParams();
 
-  const allWords = [...puzzleSet.clues, puzzleSet.target];
-  const vectors = await getEmbeddings(allWords);
+  // Pick a random target from the library
+  const [target] = await db
+    .select()
+    .from(wordEmbeddingsTable)
+    .orderBy(sql`RANDOM()`)
+    .limit(1);
 
-  const embeddingVectors: Record<string, number[]> = {};
-  allWords.forEach((w, i) => { embeddingVectors[w] = vectors[i]; });
+  if (!target) throw new Error("Word library is empty — seed first");
 
-  // Project every word through the global PCA and apply COORD_SCALE so
-  // clue/target positions live in the same scale as guess distances.
-  const points = allWords.map((word, i) => {
-    const p = projectTo3D(vectors[i], pca);
-    return { word, x: p.x * COORD_SCALE, y: p.y * COORD_SCALE, z: p.z * COORD_SCALE };
-  });
+  // Load all words to compute similarities in JS
+  const allWords = await db.select().from(wordEmbeddingsTable);
+  const targetEmb = target.embedding as unknown as number[];
 
-  const clues = puzzleSet.clues.map((word) => {
-    const pt = points.find((p) => p.word === word)!;
-    return { word: pt.word, x: pt.x, y: pt.y, z: pt.z };
-  });
-  const targetPt = points.find((p) => p.word === puzzleSet.target)!;
+  const candidates = allWords
+    .filter((w) => w.word !== target.word)
+    .map((w) => ({
+      word: w.word,
+      x: w.x,
+      y: w.y,
+      z: w.z,
+      embedding: w.embedding as unknown as number[],
+      sim: cosineSimilarity(w.embedding as unknown as number[], targetEmb),
+    }))
+    // Good clue range: clearly related but not identical; not completely unrelated
+    .filter((w) => w.sim >= 0.28 && w.sim <= 0.78);
+
+  if (candidates.length < 3) {
+    throw new Error(`Not enough clue candidates for target "${target.word}" (found ${candidates.length})`);
+  }
+
+  const used: string[] = [];
+  const clue1 = pickClueAt(candidates, 0.65, used)!; used.push(clue1.word);
+  const clue2 = pickClueAt(candidates, 0.50, used)!; used.push(clue2.word);
+  const clue3 = pickClueAt(candidates, 0.35, used)!; used.push(clue3.word);
+
+  const clues = [clue1, clue2, clue3].map((c) => ({
+    word: c.word, x: c.x, y: c.y, z: c.z,
+  }));
+
+  const embeddingVectors: Record<string, number[]> = {
+    [target.word]: targetEmb,
+    [clue1.word]: clue1.embedding,
+    [clue2.word]: clue2.embedding,
+    [clue3.word]: clue3.embedding,
+  };
 
   const [puzzle] = await db.insert(puzzlesTable).values({
     date: date ?? new Date().toISOString(),
-    targetWord: puzzleSet.target,
-    targetX: String(targetPt.x),
-    targetY: String(targetPt.y),
-    targetZ: String(targetPt.z),
+    targetWord: target.word,
+    targetX: String(target.x),
+    targetY: String(target.y),
+    targetZ: String(target.z),
     clues,
     embeddingVectors,
     pcaParams: pca,
   }).returning();
 
+  logger.info({ target: target.word, clues: clues.map(c => c.word) }, "Puzzle generated");
   return puzzle;
 }
 
 export function getRandomPuzzleSet() {
-  return PUZZLE_SETS[Math.floor(Math.random() * PUZZLE_SETS.length)];
+  return null; // No longer used — puzzles are fully auto-generated from the library
 }
 
 async function initializeDailyPuzzle() {
@@ -308,12 +407,7 @@ async function initializeDailyPuzzle() {
     return;
   }
 
-  const dayOfYear = Math.floor(
-    (Date.now() - new Date(new Date().getFullYear(), 0, 0).getTime()) / 86400000
-  );
-  const puzzleSet = PUZZLE_SETS[dayOfYear % PUZZLE_SETS.length];
-  await generatePuzzle(puzzleSet, today);
-  logger.info({ date: today, target: puzzleSet.target }, "Daily puzzle created");
+  await generatePuzzle(today);
 }
 
 loadPipeline().catch((err) => logger.error({ err }, "Pipeline init error"));
