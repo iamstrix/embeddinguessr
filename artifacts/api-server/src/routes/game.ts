@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
-import { eq, desc, count, avg, and } from "drizzle-orm";
+import { eq, desc, count, avg, sum, max, and, sql } from "drizzle-orm";
 import { getAuth } from "@clerk/express";
-import { db, puzzlesTable, sessionsTable, wordEmbeddingsTable, streaksTable } from "@workspace/db";
+import { db, puzzlesTable, sessionsTable, wordEmbeddingsTable, streaksTable, endlessScoresTable } from "@workspace/db";
 import {
   SubmitGuessBody,
   CreateSessionBody,
@@ -22,9 +22,20 @@ import { randomUUID } from "crypto";
 
 const router: IRouter = Router();
 
-/** Resolve a guess word's 3D position.
- *  Library words use their pre-computed fixed position (true semantic space).
- *  Unknown words are projected on-the-fly using the same global PCA. */
+function sessionShape(s: typeof sessionsTable.$inferSelect, guesses?: unknown[]) {
+  return {
+    id: s.id,
+    puzzleId: s.puzzleId,
+    deviceId: s.deviceId,
+    guesses: (guesses ?? (s.guesses as unknown[])) ?? [],
+    solved: s.solved,
+    attemptCount: s.attemptCount,
+    playerName: s.playerName ?? null,
+    createdAt: s.createdAt.toISOString(),
+  };
+}
+
+/** Resolve a guess word's 3D position. */
 async function resolvePosition(
   word: string,
   guessVec: number[],
@@ -41,7 +52,6 @@ async function resolvePosition(
 
   if (lib) return { x: lib.x, y: lib.y, z: lib.z };
 
-  // Not in library — project on-the-fly into the same global space
   const p = projectTo3D(guessVec, getGlobalPcaParams());
   return { x: p.x * COORD_SCALE, y: p.y * COORD_SCALE, z: p.z * COORD_SCALE };
 }
@@ -49,7 +59,7 @@ async function resolvePosition(
 /** Update (or create) the streak record for a device after solving a daily puzzle. */
 async function updateStreak(deviceId: string, puzzleDate: string): Promise<void> {
   const today = new Date().toISOString().split("T")[0];
-  if (puzzleDate !== today) return; // only daily puzzles count
+  if (puzzleDate !== today) return;
 
   const yesterday = new Date(Date.now() - 86_400_000).toISOString().split("T")[0];
 
@@ -59,7 +69,7 @@ async function updateStreak(deviceId: string, puzzleDate: string): Promise<void>
     .where(eq(streaksTable.deviceId, deviceId));
 
   if (existing) {
-    if (existing.lastSolvedDate === today) return; // already counted
+    if (existing.lastSolvedDate === today) return;
     const newStreak = existing.lastSolvedDate === yesterday ? existing.currentStreak + 1 : 1;
     const newLongest = Math.max(newStreak, existing.longestStreak);
     await db
@@ -75,6 +85,10 @@ async function updateStreak(deviceId: string, puzzleDate: string): Promise<void>
     });
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Endless puzzle
+// ─────────────────────────────────────────────────────────────────────────────
 
 router.post("/game/endless", async (req, res): Promise<void> => {
   if (!isModelReady()) {
@@ -110,6 +124,96 @@ router.post("/game/endless", async (req, res): Promise<void> => {
     res.status(500).json({ error: "Failed to generate puzzle" });
   }
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Endless leaderboard
+// ─────────────────────────────────────────────────────────────────────────────
+
+router.get("/game/endless/leaderboard", async (req, res): Promise<void> => {
+  const rows = await db
+    .select({
+      clerkUserId: endlessScoresTable.clerkUserId,
+      playerName: sql<string>`(array_agg(${endlessScoresTable.playerName} ORDER BY ${endlessScoresTable.createdAt} DESC))[1]`,
+      gamesPlayed: count(),
+      totalGuesses: sum(endlessScoresTable.guessCount),
+      avgGuesses: avg(endlessScoresTable.guessCount),
+      lastPlayedAt: max(endlessScoresTable.createdAt),
+    })
+    .from(endlessScoresTable)
+    .groupBy(endlessScoresTable.clerkUserId)
+    .orderBy(avg(endlessScoresTable.guessCount))
+    .limit(20);
+
+  const entries = rows.map((r, i) => ({
+    rank: i + 1,
+    playerName: r.playerName,
+    isVerified: true,
+    gamesPlayed: Number(r.gamesPlayed),
+    totalGuesses: Number(r.totalGuesses ?? 0),
+    avgGuesses: parseFloat(Number(r.avgGuesses ?? 0).toFixed(2)),
+    lastPlayedAt: r.lastPlayedAt ? r.lastPlayedAt.toISOString() : new Date().toISOString(),
+  }));
+
+  res.json(entries);
+});
+
+router.post("/game/endless/leaderboard/submit", async (req, res): Promise<void> => {
+  const auth = getAuth(req as any);
+  const authUserId = auth?.userId;
+
+  const { clerkUserId, playerName, guessCount } = req.body as {
+    clerkUserId: string;
+    playerName: string;
+    guessCount: number;
+  };
+
+  if (!authUserId || authUserId !== clerkUserId) {
+    res.status(401).json({ error: "Authentication required to submit endless scores" });
+    return;
+  }
+
+  if (!playerName?.trim() || typeof guessCount !== "number" || guessCount < 1) {
+    res.status(400).json({ error: "playerName and guessCount are required" });
+    return;
+  }
+
+  await db.insert(endlessScoresTable).values({
+    clerkUserId: authUserId,
+    playerName: playerName.trim().slice(0, 32),
+    guessCount,
+  });
+
+  // Return the player's updated aggregate stats with rank
+  const allRows = await db
+    .select({
+      clerkUserId: endlessScoresTable.clerkUserId,
+      playerName: sql<string>`(array_agg(${endlessScoresTable.playerName} ORDER BY ${endlessScoresTable.createdAt} DESC))[1]`,
+      gamesPlayed: count(),
+      totalGuesses: sum(endlessScoresTable.guessCount),
+      avgGuesses: avg(endlessScoresTable.guessCount),
+      lastPlayedAt: max(endlessScoresTable.createdAt),
+    })
+    .from(endlessScoresTable)
+    .groupBy(endlessScoresTable.clerkUserId)
+    .orderBy(avg(endlessScoresTable.guessCount));
+
+  const rank = allRows.findIndex((r) => r.clerkUserId === authUserId) + 1;
+  const playerRow = allRows.find((r) => r.clerkUserId === authUserId);
+
+  res.json({
+    rank,
+    playerName: playerRow?.playerName ?? playerName.trim(),
+    isVerified: true,
+    gamesPlayed: Number(playerRow?.gamesPlayed ?? 1),
+    totalGuesses: Number(playerRow?.totalGuesses ?? guessCount),
+    avgGuesses: parseFloat(Number(playerRow?.avgGuesses ?? guessCount).toFixed(2)),
+    lastPlayedAt: playerRow?.lastPlayedAt?.toISOString() ?? new Date().toISOString(),
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Daily puzzle
+// ─────────────────────────────────────────────────────────────────────────────
 
 router.get("/game/daily", async (req, res): Promise<void> => {
   if (!isModelReady()) {
@@ -147,6 +251,10 @@ router.get("/game/daily", async (req, res): Promise<void> => {
     modelReady: true,
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Guess (stateless)
+// ─────────────────────────────────────────────────────────────────────────────
 
 router.post("/game/guess", async (req, res): Promise<void> => {
   if (!isModelReady()) {
@@ -200,6 +308,10 @@ router.post("/game/guess", async (req, res): Promise<void> => {
   });
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Sessions
+// ─────────────────────────────────────────────────────────────────────────────
+
 router.post("/game/session", async (req, res): Promise<void> => {
   const parsed = CreateSessionBody.safeParse(req.body);
   if (!parsed.success) {
@@ -215,16 +327,7 @@ router.post("/game/session", async (req, res): Promise<void> => {
     .where(and(eq(sessionsTable.deviceId, deviceId), eq(sessionsTable.puzzleId, puzzleId)));
 
   if (existing.length > 0) {
-    const s = existing[0];
-    res.json({
-      id: s.id,
-      puzzleId: s.puzzleId,
-      deviceId: s.deviceId,
-      guesses: (s.guesses as unknown[]) ?? [],
-      solved: s.solved,
-      attemptCount: s.attemptCount,
-      createdAt: s.createdAt.toISOString(),
-    });
+    res.json(sessionShape(existing[0]));
     return;
   }
 
@@ -234,15 +337,7 @@ router.post("/game/session", async (req, res): Promise<void> => {
     .values({ id, puzzleId, deviceId, guesses: [], solved: false, attemptCount: 0 })
     .returning();
 
-  res.json({
-    id: session.id,
-    puzzleId: session.puzzleId,
-    deviceId: session.deviceId,
-    guesses: [],
-    solved: false,
-    attemptCount: 0,
-    createdAt: session.createdAt.toISOString(),
-  });
+  res.json(sessionShape(session, []));
 });
 
 router.post("/game/session/:sessionId/submit", async (req, res): Promise<void> => {
@@ -317,24 +412,19 @@ router.post("/game/session/:sessionId/submit", async (req, res): Promise<void> =
     .where(eq(sessionsTable.id, rawId))
     .returning();
 
-  // Auto-update streak when first solve on a daily puzzle
   if (isCorrect && !session.solved) {
     updateStreak(session.deviceId, puzzle.date).catch(() => {});
   }
 
   res.json({
     guess: guessResult,
-    session: {
-      id: updatedSession.id,
-      puzzleId: updatedSession.puzzleId,
-      deviceId: updatedSession.deviceId,
-      guesses: newGuesses,
-      solved: updatedSession.solved,
-      attemptCount: updatedSession.attemptCount,
-      createdAt: updatedSession.createdAt.toISOString(),
-    },
+    session: sessionShape(updatedSession, newGuesses),
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Daily leaderboard
+// ─────────────────────────────────────────────────────────────────────────────
 
 router.get("/game/leaderboard", async (req, res): Promise<void> => {
   const today = new Date().toISOString().split("T")[0];
@@ -348,16 +438,10 @@ router.get("/game/leaderboard", async (req, res): Promise<void> => {
   const solvedSessions = await db
     .select()
     .from(sessionsTable)
-    .where(
-      and(
-        eq(sessionsTable.puzzleId, puzzle.id),
-        eq(sessionsTable.solved, true),
-      ),
-    )
+    .where(and(eq(sessionsTable.puzzleId, puzzle.id), eq(sessionsTable.solved, true)))
     .orderBy(sessionsTable.attemptCount)
     .limit(20);
 
-  // Only show sessions that have submitted a name
   const namedSessions = solvedSessions.filter((s) => s.playerName);
 
   const entries = namedSessions.map((s, i) => ({
@@ -394,7 +478,29 @@ router.post("/game/leaderboard/submit", async (req, res): Promise<void> => {
     return;
   }
 
-  // Verify Clerk auth if a clerkUserId is provided
+  // Idempotent: if already submitted, return existing entry
+  const [puzzle] = await db.select().from(puzzlesTable).where(eq(puzzlesTable.id, session.puzzleId));
+
+  if (session.playerName) {
+    const allSolved = await db
+      .select()
+      .from(sessionsTable)
+      .where(and(eq(sessionsTable.puzzleId, session.puzzleId), eq(sessionsTable.solved, true)))
+      .orderBy(sessionsTable.attemptCount);
+    const named = allSolved.filter((s) => s.playerName);
+    const rank = named.findIndex((s) => s.id === sessionId) + 1 || 1;
+    res.json({
+      rank,
+      playerName: session.playerName,
+      isVerified: !!session.clerkUserId,
+      attemptCount: session.attemptCount,
+      solvedAt: session.updatedAt.toISOString(),
+      alreadySubmitted: true,
+    });
+    return;
+  }
+
+  // Verify Clerk auth if provided
   let verifiedClerkId: string | null = null;
   if (clerkUserId) {
     const auth = getAuth(req as any);
@@ -410,27 +516,13 @@ router.post("/game/leaderboard/submit", async (req, res): Promise<void> => {
     .where(eq(sessionsTable.id, sessionId))
     .returning();
 
-  // Compute rank
-  const [puzzle] = await db.select().from(puzzlesTable).where(eq(puzzlesTable.id, session.puzzleId));
-
   let rank = 1;
   if (puzzle) {
-    const betterSessions = await db
-      .select({ cnt: count() })
-      .from(sessionsTable)
-      .where(
-        and(
-          eq(sessionsTable.puzzleId, puzzle.id),
-          eq(sessionsTable.solved, true),
-        ),
-      );
-    // approximate rank by guess count
     const allSolved = await db
       .select()
       .from(sessionsTable)
       .where(and(eq(sessionsTable.puzzleId, puzzle.id), eq(sessionsTable.solved, true)))
       .orderBy(sessionsTable.attemptCount);
-
     const named = allSolved.filter((s) => s.playerName);
     rank = named.findIndex((s) => s.id === sessionId) + 1 || 1;
   }
@@ -443,6 +535,10 @@ router.post("/game/leaderboard/submit", async (req, res): Promise<void> => {
     solvedAt: updatedSession.updatedAt.toISOString(),
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Streak
+// ─────────────────────────────────────────────────────────────────────────────
 
 router.get("/game/streak/:deviceId", async (req, res): Promise<void> => {
   const rawDeviceId = Array.isArray(req.params.deviceId)
@@ -466,6 +562,10 @@ router.get("/game/streak/:deviceId", async (req, res): Promise<void> => {
     lastSolvedDate: streak?.lastSolvedDate ?? null,
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Stats
+// ─────────────────────────────────────────────────────────────────────────────
 
 router.get("/game/stats", async (req, res): Promise<void> => {
   const today = new Date().toISOString().split("T")[0];
@@ -499,12 +599,13 @@ router.get("/game/stats", async (req, res): Promise<void> => {
   });
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Power-ups
+// ─────────────────────────────────────────────────────────────────────────────
+
 function maskWord(word: string): string {
   const chars = word.split("");
-  // Always reveal the first letter. Randomly hide ~50% of the rest.
-  // Guarantee at least one hidden letter and at least one revealed beyond the first.
   const result = chars.map((ch, i) => (i === 0 ? ch : Math.random() < 0.5 ? "_" : ch));
-  // If every letter after the first is revealed, hide a random middle one
   const hiddenCount = result.filter((c) => c === "_").length;
   if (hiddenCount === 0 && word.length > 1) {
     const idx = 1 + Math.floor(Math.random() * (word.length - 1));

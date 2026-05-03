@@ -6,12 +6,12 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface LeaderboardEntry {
+export interface EndlessLeaderboardEntry {
   rank: number;
   playerName: string;
   isVerified: boolean;
-  attemptCount: number;
-  solvedAt: string;
-  /** True when the session already had a name — submission was idempotent */
-  alreadySubmitted?: boolean;
+  gamesPlayed: number;
+  totalGuesses: number;
+  avgGuesses: number;
+  lastPlayedAt: string;
 }

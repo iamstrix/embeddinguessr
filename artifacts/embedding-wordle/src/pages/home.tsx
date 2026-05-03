@@ -161,12 +161,13 @@ export default function Home() {
     : [];
 
   useEffect(() => {
-    if (isSolved && !showScoreModal) {
+    // Only show modal if solved and player hasn't already submitted their name
+    if (isSolved && !showScoreModal && !session?.playerName) {
       const timer = setTimeout(() => setShowScoreModal(true), 1200);
       return () => clearTimeout(timer);
     }
     return undefined;
-  }, [isSolved]);
+  }, [isSolved, session?.playerName]);
 
   // Shared guess list content
   const GuessList = () => (

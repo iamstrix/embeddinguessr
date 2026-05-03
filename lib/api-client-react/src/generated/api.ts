@@ -18,6 +18,8 @@ import type {
 
 import type {
   CreateSessionRequest,
+  EndlessLeaderboardEntry,
+  EndlessSubmitRequest,
   ErrorResponse,
   GameSession,
   GameStats,
@@ -275,6 +277,169 @@ export const useCreateEndlessPuzzle = <
 };
 
 /**
+ * Returns top players ranked by fewest average guesses across all their endless games
+ * @summary Get endless mode leaderboard
+ */
+export const getGetEndlessLeaderboardUrl = () => {
+  return `/api/game/endless/leaderboard`;
+};
+
+export const getEndlessLeaderboard = async (
+  options?: RequestInit,
+): Promise<EndlessLeaderboardEntry[]> => {
+  return customFetch<EndlessLeaderboardEntry[]>(getGetEndlessLeaderboardUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetEndlessLeaderboardQueryKey = () => {
+  return [`/api/game/endless/leaderboard`] as const;
+};
+
+export const getGetEndlessLeaderboardQueryOptions = <
+  TData = Awaited<ReturnType<typeof getEndlessLeaderboard>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getEndlessLeaderboard>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetEndlessLeaderboardQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getEndlessLeaderboard>>
+  > = ({ signal }) => getEndlessLeaderboard({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getEndlessLeaderboard>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetEndlessLeaderboardQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getEndlessLeaderboard>>
+>;
+export type GetEndlessLeaderboardQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get endless mode leaderboard
+ */
+
+export function useGetEndlessLeaderboard<
+  TData = Awaited<ReturnType<typeof getEndlessLeaderboard>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getEndlessLeaderboard>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetEndlessLeaderboardQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * Records a completed endless game for a signed-in player. Requires Clerk authentication.
+ * @summary Submit an endless mode score
+ */
+export const getSubmitEndlessScoreUrl = () => {
+  return `/api/game/endless/leaderboard/submit`;
+};
+
+export const submitEndlessScore = async (
+  endlessSubmitRequest: EndlessSubmitRequest,
+  options?: RequestInit,
+): Promise<EndlessLeaderboardEntry> => {
+  return customFetch<EndlessLeaderboardEntry>(getSubmitEndlessScoreUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(endlessSubmitRequest),
+  });
+};
+
+export const getSubmitEndlessScoreMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof submitEndlessScore>>,
+    TError,
+    { data: BodyType<EndlessSubmitRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof submitEndlessScore>>,
+  TError,
+  { data: BodyType<EndlessSubmitRequest> },
+  TContext
+> => {
+  const mutationKey = ["submitEndlessScore"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof submitEndlessScore>>,
+    { data: BodyType<EndlessSubmitRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return submitEndlessScore(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type SubmitEndlessScoreMutationResult = NonNullable<
+  Awaited<ReturnType<typeof submitEndlessScore>>
+>;
+export type SubmitEndlessScoreMutationBody = BodyType<EndlessSubmitRequest>;
+export type SubmitEndlessScoreMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Submit an endless mode score
+ */
+export const useSubmitEndlessScore = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof submitEndlessScore>>,
+    TError,
+    { data: BodyType<EndlessSubmitRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof submitEndlessScore>>,
+  TError,
+  { data: BodyType<EndlessSubmitRequest> },
+  TContext
+> => {
+  return useMutation(getSubmitEndlessScoreMutationOptions(options));
+};
+
+/**
  * Submit a word guess for the current puzzle. Returns the 3D position of the guess, distance to target, and a temperature hint.
  * @summary Submit a guess
  */
@@ -438,7 +603,7 @@ export function useGetLeaderboard<
 }
 
 /**
- * Attaches a player name and optional Clerk user ID to a solved session, making it appear on the leaderboard with the player's name.
+ * Attaches a player name and optional Clerk user ID to a solved session. Idempotent — returns existing entry if already submitted.
  * @summary Submit score to leaderboard
  */
 export const getSubmitLeaderboardScoreUrl = () => {

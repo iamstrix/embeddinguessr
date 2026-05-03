@@ -14,5 +14,7 @@ export interface GameSession {
   guesses: GuessResult[];
   solved: boolean;
   attemptCount: number;
+  /** Set once the player submits their name to the daily leaderboard */
+  playerName?: string | null;
   createdAt: string;
 }

@@ -8,6 +8,8 @@
 
 export * from "./createSessionRequest";
 export * from "./embeddingPoint";
+export * from "./endlessLeaderboardEntry";
+export * from "./endlessSubmitRequest";
 export * from "./errorResponse";
 export * from "./gameSession";
 export * from "./gameStats";

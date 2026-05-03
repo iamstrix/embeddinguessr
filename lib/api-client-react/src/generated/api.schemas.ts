@@ -71,6 +71,8 @@ export interface GameSession {
   guesses: GuessResult[];
   solved: boolean;
   attemptCount: number;
+  /** Set once the player submits their name to the daily leaderboard */
+  playerName?: string | null;
   createdAt: string;
 }
 
@@ -85,12 +87,30 @@ export interface LeaderboardEntry {
   isVerified: boolean;
   attemptCount: number;
   solvedAt: string;
+  /** True when the session already had a name — submission was idempotent */
+  alreadySubmitted?: boolean;
 }
 
 export interface LeaderboardSubmitRequest {
   sessionId: string;
   playerName: string;
   clerkUserId?: string;
+}
+
+export interface EndlessLeaderboardEntry {
+  rank: number;
+  playerName: string;
+  isVerified: boolean;
+  gamesPlayed: number;
+  totalGuesses: number;
+  avgGuesses: number;
+  lastPlayedAt: string;
+}
+
+export interface EndlessSubmitRequest {
+  clerkUserId: string;
+  playerName: string;
+  guessCount: number;
 }
 
 export interface StreakInfo {

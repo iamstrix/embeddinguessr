@@ -92,6 +92,43 @@ export const CreateEndlessPuzzleResponse = zod.object({
 });
 
 /**
+ * Returns top players ranked by fewest average guesses across all their endless games
+ * @summary Get endless mode leaderboard
+ */
+export const GetEndlessLeaderboardResponseItem = zod.object({
+  rank: zod.number(),
+  playerName: zod.string(),
+  isVerified: zod.boolean(),
+  gamesPlayed: zod.number(),
+  totalGuesses: zod.number(),
+  avgGuesses: zod.number(),
+  lastPlayedAt: zod.string(),
+});
+export const GetEndlessLeaderboardResponse = zod.array(
+  GetEndlessLeaderboardResponseItem,
+);
+
+/**
+ * Records a completed endless game for a signed-in player. Requires Clerk authentication.
+ * @summary Submit an endless mode score
+ */
+export const SubmitEndlessScoreBody = zod.object({
+  clerkUserId: zod.string(),
+  playerName: zod.string(),
+  guessCount: zod.number(),
+});
+
+export const SubmitEndlessScoreResponse = zod.object({
+  rank: zod.number(),
+  playerName: zod.string(),
+  isVerified: zod.boolean(),
+  gamesPlayed: zod.number(),
+  totalGuesses: zod.number(),
+  avgGuesses: zod.number(),
+  lastPlayedAt: zod.string(),
+});
+
+/**
  * Submit a word guess for the current puzzle. Returns the 3D position of the guess, distance to target, and a temperature hint.
  * @summary Submit a guess
  */
@@ -121,11 +158,17 @@ export const GetLeaderboardResponseItem = zod.object({
   isVerified: zod.boolean(),
   attemptCount: zod.number(),
   solvedAt: zod.string(),
+  alreadySubmitted: zod
+    .boolean()
+    .optional()
+    .describe(
+      "True when the session already had a name — submission was idempotent",
+    ),
 });
 export const GetLeaderboardResponse = zod.array(GetLeaderboardResponseItem);
 
 /**
- * Attaches a player name and optional Clerk user ID to a solved session, making it appear on the leaderboard with the player's name.
+ * Attaches a player name and optional Clerk user ID to a solved session. Idempotent — returns existing entry if already submitted.
  * @summary Submit score to leaderboard
  */
 export const SubmitLeaderboardScoreBody = zod.object({
@@ -140,6 +183,12 @@ export const SubmitLeaderboardScoreResponse = zod.object({
   isVerified: zod.boolean(),
   attemptCount: zod.number(),
   solvedAt: zod.string(),
+  alreadySubmitted: zod
+    .boolean()
+    .optional()
+    .describe(
+      "True when the session already had a name — submission was idempotent",
+    ),
 });
 
 /**
@@ -176,6 +225,12 @@ export const CreateSessionResponse = zod.object({
   ),
   solved: zod.boolean(),
   attemptCount: zod.number(),
+  playerName: zod
+    .string()
+    .nullish()
+    .describe(
+      "Set once the player submits their name to the daily leaderboard",
+    ),
   createdAt: zod.string(),
 });
 
@@ -235,6 +290,12 @@ export const SubmitSessionGuessResponse = zod.object({
     ),
     solved: zod.boolean(),
     attemptCount: zod.number(),
+    playerName: zod
+      .string()
+      .nullish()
+      .describe(
+        "Set once the player submits their name to the daily leaderboard",
+      ),
     createdAt: zod.string(),
   }),
 });

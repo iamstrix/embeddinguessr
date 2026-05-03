@@ -7,6 +7,7 @@ import { Scene } from "@/components/scene";
 import type { HintWord, HintPhase, BhPhase, BhRevealedWord } from "@/components/scene";
 import { Layout } from "@/components/layout";
 import { HintTooltip } from "@/components/hint-tooltip";
+import { EndlessScoreSubmitModal } from "@/components/endless-score-submit-modal";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -171,6 +172,17 @@ export default function Endless() {
     ? [...session.guesses].sort((a, b) => a.distanceToTarget - b.distanceToTarget)
     : [];
 
+  const [showScoreModal, setShowScoreModal] = useState(false);
+  const endlessTargetWord = session?.guesses?.find((g) => g.isCorrect)?.word ?? "";
+
+  useEffect(() => {
+    if (isSolved && !showScoreModal) {
+      const timer = setTimeout(() => setShowScoreModal(true), 1200);
+      return () => clearTimeout(timer);
+    }
+    return undefined;
+  }, [isSolved]);
+
   // Shared guess list
   const GuessList = () => (
     <div className="space-y-2">
@@ -227,6 +239,7 @@ export default function Endless() {
   );
 
   return (
+    <>
     <Layout>
       <div className="relative w-full h-screen overflow-hidden bg-black">
         {/* Scene — always full screen */}
@@ -486,5 +499,13 @@ export default function Endless() {
         )}
       </div>
     </Layout>
+
+    <EndlessScoreSubmitModal
+      open={showScoreModal}
+      onClose={() => setShowScoreModal(false)}
+      guessCount={session?.attemptCount ?? 0}
+      targetWord={endlessTargetWord}
+    />
+  </>
   );
 }
