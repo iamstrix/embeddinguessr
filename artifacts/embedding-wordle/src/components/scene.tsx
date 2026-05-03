@@ -1,6 +1,6 @@
 import { Canvas, useFrame } from "@react-three/fiber";
 import { OrbitControls, Stars, Html, Line } from "@react-three/drei";
-import { useRef, useState, useEffect, Component } from "react";
+import { useRef, useState, useEffect, useMemo, Component } from "react";
 import type { ReactNode } from "react";
 import * as THREE from "three";
 import type { EmbeddingPoint, GuessResult } from "@workspace/api-client-react";
@@ -199,6 +199,15 @@ function Scene3D({
   );
 }
 
+// Isometric projection: maps (x,y,z) → 2D screen coords using all 3 axes
+function isoProject(x: number, y: number, z: number) {
+  const angle = Math.PI / 6; // 30°
+  return {
+    sx: (x - z) * Math.cos(angle),
+    sy: -(y - (x + z) * Math.sin(angle)),
+  };
+}
+
 function Scene2D({
   clues,
   target,
@@ -210,91 +219,156 @@ function Scene2D({
   guesses: GuessResult[];
   solved: boolean;
 }) {
-  const W = 600;
-  const H = 500;
-  const toSvg = (x: number, y: number) => ({
-    cx: W / 2 + x * W * 0.38,
-    cy: H / 2 - y * H * 0.38,
-  });
+  const W = 700;
+  const H = 520;
+  const PAD = 60;
+
+  // Stable star field — generated once per mount
+  const stars = useMemo(() =>
+    Array.from({ length: 140 }, (_, i) => ({
+      id: i,
+      left: Math.random() * 100,
+      top: Math.random() * 100,
+      size: Math.random() * 1.8 + 0.6,
+      opacity: Math.random() * 0.55 + 0.1,
+    })), []);
+
+  // Collect all points for auto-fit
+  const allPoints = useMemo(() => {
+    const pts: { x: number; y: number; z: number }[] = [
+      ...clues,
+      ...(target ? [target] : []),
+      ...guesses,
+    ];
+    return pts;
+  }, [clues, target, guesses]);
+
+  // Compute projected coords for every point, then build a scale/offset that
+  // fits all of them within [PAD, W-PAD] × [PAD, H-PAD]
+  const project = useMemo(() => {
+    if (allPoints.length === 0) return (x: number, y: number, z: number) => ({ cx: W / 2, cy: H / 2 });
+
+    const projected = allPoints.map((p) => isoProject(p.x, p.y, p.z));
+    const sxMin = Math.min(...projected.map((p) => p.sx));
+    const sxMax = Math.max(...projected.map((p) => p.sx));
+    const syMin = Math.min(...projected.map((p) => p.sy));
+    const syMax = Math.max(...projected.map((p) => p.sy));
+
+    const rangeX = sxMax - sxMin || 1;
+    const rangeY = syMax - syMin || 1;
+    const scaleX = (W - PAD * 2) / rangeX;
+    const scaleY = (H - PAD * 2) / rangeY;
+    const scale = Math.min(scaleX, scaleY);
+
+    const midSx = (sxMin + sxMax) / 2;
+    const midSy = (syMin + syMax) / 2;
+
+    return (x: number, y: number, z: number) => {
+      const { sx, sy } = isoProject(x, y, z);
+      return {
+        cx: W / 2 + (sx - midSx) * scale,
+        cy: H / 2 + (sy - midSy) * scale,
+      };
+    };
+  }, [allPoints]);
+
+  // Sort guesses back-to-front by z for painter's algorithm
+  const sortedGuesses = useMemo(
+    () => [...guesses].sort((a, b) => a.z - b.z),
+    [guesses]
+  );
 
   return (
     <div className="w-full h-full flex items-center justify-center bg-[#05070a] relative overflow-hidden">
       <div className="absolute inset-0 pointer-events-none">
-        {Array.from({ length: 120 }).map((_, i) => (
+        {stars.map((s) => (
           <div
-            key={i}
+            key={s.id}
             className="absolute rounded-full bg-white"
-            style={{
-              width: Math.random() * 2 + 1,
-              height: Math.random() * 2 + 1,
-              left: `${Math.random() * 100}%`,
-              top: `${Math.random() * 100}%`,
-              opacity: Math.random() * 0.6 + 0.1,
-            }}
+            style={{ width: s.size, height: s.size, left: `${s.left}%`, top: `${s.top}%`, opacity: s.opacity }}
           />
         ))}
       </div>
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full max-w-2xl" style={{ maxHeight: "80vh" }}>
-        {target &&
-          clues.map((clue, i) => {
-            const s = toSvg(clue.x, clue.y);
-            const t = toSvg(target.x, target.y);
-            return (
-              <line
-                key={i}
-                x1={s.cx}
-                y1={s.cy}
-                x2={t.cx}
-                y2={t.cy}
-                stroke="white"
-                strokeOpacity={0.08}
-                strokeDasharray="6 4"
-                strokeWidth={1}
-              />
-            );
-          })}
 
-        {guesses.map((g, i) => {
-          const { cx, cy } = toSvg(g.x, g.y);
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full max-w-3xl" style={{ maxHeight: "85vh" }}>
+        {/* Axis guides to show the 3D nature */}
+        <g opacity={0.06}>
+          {/* X axis */}
+          {(() => { const o = project(0,0,0); const e = project(0.8,0,0); return <line x1={o.cx} y1={o.cy} x2={e.cx} y2={e.cy} stroke="#ff6666" strokeWidth={1}/> })()}
+          {/* Y axis */}
+          {(() => { const o = project(0,0,0); const e = project(0,0.8,0); return <line x1={o.cx} y1={o.cy} x2={e.cx} y2={e.cy} stroke="#66ff66" strokeWidth={1}/> })()}
+          {/* Z axis */}
+          {(() => { const o = project(0,0,0); const e = project(0,0,0.8); return <line x1={o.cx} y1={o.cy} x2={e.cx} y2={e.cy} stroke="#6666ff" strokeWidth={1}/> })()}
+        </g>
+
+        {/* Connector lines from clues to target */}
+        {target && clues.map((clue, i) => {
+          const s = project(clue.x, clue.y, clue.z);
+          const t = project(target.x, target.y, target.z);
+          return (
+            <line key={i} x1={s.cx} y1={s.cy} x2={t.cx} y2={t.cy}
+              stroke="white" strokeOpacity={0.08} strokeDasharray="5 4" strokeWidth={1} />
+          );
+        })}
+
+        {/* Guesses (back-to-front) */}
+        {sortedGuesses.map((g, i) => {
+          const { cx, cy } = project(g.x, g.y, g.z);
           const color = TEMP_COLORS_2D[g.temperature] || "#fff";
+          // z in [-1,1]: closer z (higher) = slightly larger
+          const depthScale = 0.85 + (g.z + 1) * 0.15;
+          const r = (g.isCorrect ? 11 : 6) * depthScale;
           return (
             <g key={`g-${i}`}>
-              <circle cx={cx} cy={cy} r={g.isCorrect ? 12 : 7} fill={color} fillOpacity={0.85} />
-              <text x={cx} y={cy - 14} textAnchor="middle" fill={color} fontSize={10} fontFamily="monospace" fontWeight="bold">
+              <circle cx={cx} cy={cy} r={r} fill={color} fillOpacity={0.82} />
+              <text x={cx} y={cy - r - 4} textAnchor="middle" fill={color}
+                fontSize={9.5} fontFamily="monospace" fontWeight="bold" opacity={0.95}>
                 {g.word}
               </text>
             </g>
           );
         })}
 
+        {/* Clue words */}
         {clues.map((clue, i) => {
-          const { cx, cy } = toSvg(clue.x, clue.y);
+          const { cx, cy } = project(clue.x, clue.y, clue.z);
           return (
             <g key={`c-${i}`}>
-              <circle cx={cx} cy={cy} r={10} fill="#888888" fillOpacity={0.9} />
-              <text x={cx} y={cy - 16} textAnchor="middle" fill="white" fontSize={11} fontFamily="monospace" fontWeight="bold">
+              <circle cx={cx} cy={cy} r={10} fill="#777" fillOpacity={0.9} />
+              <text x={cx} y={cy - 15} textAnchor="middle" fill="white"
+                fontSize={11} fontFamily="monospace" fontWeight="bold">
                 {clue.word}
               </text>
             </g>
           );
         })}
 
+        {/* Target */}
         {target && (() => {
-          const { cx, cy } = toSvg(target.x, target.y);
+          const { cx, cy } = project(target.x, target.y, target.z);
           const color = solved ? "#ffd700" : "#ffffff";
           return (
             <g>
-              <circle cx={cx} cy={cy} r={14} fill={color} fillOpacity={0.2} stroke={color} strokeWidth={2} />
+              <circle cx={cx} cy={cy} r={16} fill={color} fillOpacity={0.12} stroke={color} strokeWidth={1.5} />
               <circle cx={cx} cy={cy} r={8} fill={color} fillOpacity={0.9} />
-              <text x={cx} y={cy - 20} textAnchor="middle" fill={color} fontSize={12} fontFamily="monospace" fontWeight="bold">
+              <text x={cx} y={cy - 22} textAnchor="middle" fill={color}
+                fontSize={12} fontFamily="monospace" fontWeight="bold">
                 {solved ? target.word : "?"}
               </text>
             </g>
           );
         })()}
+
+        {/* Axis labels */}
+        <g opacity={0.18} fontSize={8} fontFamily="monospace" fill="white">
+          {(() => { const e = project(0.9, 0, 0); return <text x={e.cx + 4} y={e.cy}>x</text> })()}
+          {(() => { const e = project(0, 0.9, 0); return <text x={e.cx + 4} y={e.cy}>y</text> })()}
+          {(() => { const e = project(0, 0, 0.9); return <text x={e.cx + 4} y={e.cy}>z</text> })()}
+        </g>
       </svg>
-      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 text-white/30 text-xs font-mono">
-        2D VIEW — Enable WebGL for the full 3D experience
+
+      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 text-white/25 text-xs font-mono">
+        ISOMETRIC VIEW — Enable WebGL for interactive 3D
       </div>
     </div>
   );
