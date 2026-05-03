@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { useGameSounds } from "@/hooks/use-game-sounds";
 import { useCreateSession, useSubmitSessionGuess, useCreateEndlessPuzzle } from "@workspace/api-client-react";
 import type { Puzzle, GameSession } from "@workspace/api-client-react";
 import { getDeviceId } from "@/lib/device";
@@ -33,6 +34,7 @@ function BhIcon() {
 }
 
 export default function Endless() {
+  const sounds = useGameSounds();
   const [deviceId, setDeviceId] = useState("");
   const [guessInput, setGuessInput] = useState("");
   const [puzzle, setPuzzle] = useState<Puzzle | null>(null);
@@ -102,6 +104,17 @@ export default function Endless() {
         onSuccess: (result) => {
           setSession(result.session);
           setGuessInput("");
+          const latest = result.session.guesses?.at(-1);
+          if (latest) {
+            if (latest.isCorrect) {
+              sounds.playSolve();
+            } else if (latest.temperature === 'hot') {
+              sounds.playGuess(latest.temperature);
+              sounds.playHotMatch();
+            } else {
+              sounds.playGuess(latest.temperature);
+            }
+          }
         },
       }
     );
@@ -120,12 +133,13 @@ export default function Endless() {
       const data = await res.json();
       setHintWords(data.hints ?? []);
       setHintPhase("shooting");
+      sounds.playSolarHint();
       setTimeout(() => setHintPhase("pulsing"), 1500);
       setTimeout(() => setHintPhase("revealed"), 2350);
     } catch {
       setHintPhase("idle");
     }
-  }, [puzzle, session, hintPhase]);
+  }, [puzzle, session, hintPhase, sounds]);
 
   const bhEnergy = useMemo(() => {
     const total = (session?.guesses ?? []).reduce((sum, g) => sum + g.similarityScore, 0);
@@ -137,6 +151,7 @@ export default function Endless() {
   const triggerBlackHole = useCallback(async () => {
     if (!bhReady || bhPhase !== "idle" || !puzzle || !session) return;
     setBhPhase("shooting");
+    sounds.playBlackHole();
     fetch("/api/game/black-hole", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -149,7 +164,7 @@ export default function Endless() {
     setTimeout(() => setBhPhase("pulling"), 1400);
     setTimeout(() => setBhPhase("exploding"), 2900);
     setTimeout(() => setBhPhase("revealed"), 3600);
-  }, [bhReady, bhPhase, puzzle, session, hintWords]);
+  }, [bhReady, bhPhase, puzzle, session, hintWords, sounds]);
 
   const isSolved = session?.solved ?? false;
   const modelReady = !!puzzle;

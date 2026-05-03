@@ -10,6 +10,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { motion, AnimatePresence } from "framer-motion";
 import { Trophy, Send, Sun } from "lucide-react";
 import { Link } from "wouter";
+import { useGameSounds } from "@/hooks/use-game-sounds";
 
 const TEMP_COLORS: Record<string, string> = {
   correct: "bg-yellow-400",
@@ -33,6 +34,7 @@ function BhIcon() {
 }
 
 export default function Home() {
+  const sounds = useGameSounds();
   const [deviceId, setDeviceId] = useState("");
   const [guessInput, setGuessInput] = useState("");
   const [hintPhase, setHintPhase] = useState<HintPhase>("idle");
@@ -77,7 +79,22 @@ export default function Home() {
     if (!guessInput.trim() || !session || !puzzle || isSubmitting) return;
     submitGuess(
       { sessionId: session.id, data: { word: guessInput.trim().toLowerCase(), puzzleId: puzzle.id } },
-      { onSuccess: () => setGuessInput("") }
+      {
+        onSuccess: (result) => {
+          setGuessInput("");
+          const latest = result.session.guesses?.at(-1);
+          if (latest) {
+            if (latest.isCorrect) {
+              sounds.playSolve();
+            } else if (latest.temperature === 'hot') {
+              sounds.playGuess(latest.temperature);
+              sounds.playHotMatch();
+            } else {
+              sounds.playGuess(latest.temperature);
+            }
+          }
+        },
+      }
     );
   };
 
@@ -94,12 +111,13 @@ export default function Home() {
       const data = await res.json();
       setHintWords(data.hints ?? []);
       setHintPhase("shooting");
+      sounds.playSolarHint();
       setTimeout(() => setHintPhase("pulsing"), 1500);
       setTimeout(() => setHintPhase("revealed"), 2350);
     } catch {
       setHintPhase("idle");
     }
-  }, [puzzle, session, hintPhase]);
+  }, [puzzle, session, hintPhase, sounds]);
 
   const bhEnergy = useMemo(() => {
     const total = (session?.guesses ?? []).reduce((sum, g) => sum + g.similarityScore, 0);
@@ -111,6 +129,7 @@ export default function Home() {
   const triggerBlackHole = useCallback(async () => {
     if (!bhReady || bhPhase !== "idle" || !puzzle || !session) return;
     setBhPhase("shooting");
+    sounds.playBlackHole();
     fetch("/api/game/black-hole", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -123,7 +142,7 @@ export default function Home() {
     setTimeout(() => setBhPhase("pulling"), 1400);
     setTimeout(() => setBhPhase("exploding"), 2900);
     setTimeout(() => setBhPhase("revealed"), 3600);
-  }, [bhReady, bhPhase, puzzle, session, hintWords]);
+  }, [bhReady, bhPhase, puzzle, session, hintWords, sounds]);
 
   const isLoading = isLoadingPuzzle || !puzzle;
   const modelReady = puzzle?.modelReady ?? false;
