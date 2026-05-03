@@ -11,6 +11,7 @@ export const puzzlesTable = pgTable("puzzles", {
   targetZ: text("target_z").notNull(),
   clues: jsonb("clues").notNull(),
   embeddingVectors: jsonb("embedding_vectors").notNull(),
+  pcaParams: jsonb("pca_params"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

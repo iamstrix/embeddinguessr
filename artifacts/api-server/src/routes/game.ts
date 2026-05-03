@@ -14,10 +14,23 @@ import {
   getTemperature,
   generatePuzzle,
   getRandomPuzzleSet,
+  projectTo3D,
+  reduceTo3D,
+  type PcaParams,
 } from "../lib/embeddings";
 import { randomUUID } from "crypto";
 
 const router: IRouter = Router();
+
+function getPcaParams(puzzle: { pcaParams: unknown; embeddingVectors: unknown }): PcaParams {
+  if (puzzle.pcaParams) return puzzle.pcaParams as PcaParams;
+  // Fallback: recompute PCA from stored embedding vectors for old puzzles
+  const embeddingVectors = puzzle.embeddingVectors as Record<string, number[]>;
+  const words = Object.keys(embeddingVectors);
+  const vectors = words.map((w) => embeddingVectors[w]);
+  const { pcaParams } = reduceTo3D(vectors, words);
+  return pcaParams;
+}
 
 router.post("/game/endless", async (req, res): Promise<void> => {
   if (!isModelReady()) {
@@ -105,7 +118,6 @@ router.post("/game/guess", async (req, res): Promise<void> => {
 
   const embeddingVectors = puzzle.embeddingVectors as Record<string, number[]>;
   const targetVec = embeddingVectors[puzzle.targetWord];
-  const clues = puzzle.clues as Array<{ word: string; x: number; y: number; z: number }>;
 
   let guessVec: number[];
   try {
@@ -123,33 +135,12 @@ router.post("/game/guess", async (req, res): Promise<void> => {
   const targetZ = parseFloat(puzzle.targetZ);
 
   let x: number, y: number, z: number;
-
   if (isCorrect) {
-    x = targetX;
-    y = targetY;
-    z = targetZ;
+    x = targetX; y = targetY; z = targetZ;
   } else {
-    let totalWeight = 0;
-    x = 0; y = 0; z = 0;
-    for (const clue of clues) {
-      const clueVec = embeddingVectors[clue.word];
-      if (!clueVec) continue;
-      const sim = Math.max(0, cosineSimilarity(guessVec, clueVec));
-      x += clue.x * sim;
-      y += clue.y * sim;
-      z += clue.z * sim;
-      totalWeight += sim;
-    }
-    const targetSim = Math.max(0, similarity);
-    x += targetX * targetSim;
-    y += targetY * targetSim;
-    z += targetZ * targetSim;
-    totalWeight += targetSim;
-    if (totalWeight > 0) {
-      x /= totalWeight;
-      y /= totalWeight;
-      z /= totalWeight;
-    }
+    const pcaParams = getPcaParams(puzzle);
+    const pos = projectTo3D(guessVec, pcaParams);
+    x = pos.x; y = pos.y; z = pos.z;
   }
 
   const temperature = isCorrect ? "correct" : getTemperature(distance);
@@ -247,7 +238,6 @@ router.post("/game/session/:sessionId/submit", async (req, res): Promise<void> =
 
   const embeddingVectors = puzzle.embeddingVectors as Record<string, number[]>;
   const targetVec = embeddingVectors[puzzle.targetWord];
-  const clues = puzzle.clues as Array<{ word: string; x: number; y: number; z: number }>;
 
   let guessVec: number[];
   try {
@@ -268,19 +258,9 @@ router.post("/game/session/:sessionId/submit", async (req, res): Promise<void> =
   if (isCorrect) {
     x = targetX; y = targetY; z = targetZ;
   } else {
-    let totalWeight = 0;
-    x = 0; y = 0; z = 0;
-    for (const clue of clues) {
-      const clueVec = embeddingVectors[clue.word];
-      if (!clueVec) continue;
-      const sim = Math.max(0, cosineSimilarity(guessVec, clueVec));
-      x += clue.x * sim; y += clue.y * sim; z += clue.z * sim;
-      totalWeight += sim;
-    }
-    const targetSim = Math.max(0, similarity);
-    x += targetX * targetSim; y += targetY * targetSim; z += targetZ * targetSim;
-    totalWeight += targetSim;
-    if (totalWeight > 0) { x /= totalWeight; y /= totalWeight; z /= totalWeight; }
+    const pcaParams = getPcaParams(puzzle);
+    const pos = projectTo3D(guessVec, pcaParams);
+    x = pos.x; y = pos.y; z = pos.z;
   }
 
   const guessResult = {

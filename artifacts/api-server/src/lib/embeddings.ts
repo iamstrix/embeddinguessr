@@ -52,10 +52,20 @@ export function cosineSimilarity(a: number[], b: number[]): number {
   return dot / (Math.sqrt(normA) * Math.sqrt(normB));
 }
 
+export interface PcaParams {
+  mean: number[];
+  pc1: number[];
+  pc2: number[];
+  pc3: number[];
+  scaleX: number;
+  scaleY: number;
+  scaleZ: number;
+}
+
 export function reduceTo3D(
   vectors: number[][],
   labels: string[]
-): Array<{ word: string; x: number; y: number; z: number }> {
+): { points: Array<{ word: string; x: number; y: number; z: number }>; pcaParams: PcaParams } {
   const n = vectors.length;
   const dim = vectors[0].length;
 
@@ -109,22 +119,35 @@ export function reduceTo3D(
   const project = (v: number[], pc: number[]) =>
     v.reduce((s, val, i) => s + val * pc[i], 0);
 
-  const coords = centered.map((v) => ({
+  const rawCoords = centered.map((v) => ({
     x: project(v, pc1),
     y: project(v, pc2),
     z: project(v, pc3),
   }));
 
-  const scale = (vals: number[]) => {
-    const max = Math.max(...vals.map(Math.abs)) || 1;
-    return vals.map((v) => v / max);
+  const scaleX = Math.max(...rawCoords.map((c) => Math.abs(c.x))) || 1;
+  const scaleY = Math.max(...rawCoords.map((c) => Math.abs(c.y))) || 1;
+  const scaleZ = Math.max(...rawCoords.map((c) => Math.abs(c.z))) || 1;
+
+  const points = labels.map((word, i) => ({
+    word,
+    x: rawCoords[i].x / scaleX,
+    y: rawCoords[i].y / scaleY,
+    z: rawCoords[i].z / scaleZ,
+  }));
+
+  return { points, pcaParams: { mean, pc1, pc2, pc3, scaleX, scaleY, scaleZ } };
+}
+
+export function projectTo3D(vec: number[], pcaParams: PcaParams): { x: number; y: number; z: number } {
+  const { mean, pc1, pc2, pc3, scaleX, scaleY, scaleZ } = pcaParams;
+  const centered = vec.map((v, i) => v - mean[i]);
+  const dot = (a: number[], b: number[]) => a.reduce((s, v, i) => s + v * b[i], 0);
+  return {
+    x: dot(centered, pc1) / scaleX,
+    y: dot(centered, pc2) / scaleY,
+    z: dot(centered, pc3) / scaleZ,
   };
-
-  const xs = scale(coords.map((c) => c.x));
-  const ys = scale(coords.map((c) => c.y));
-  const zs = scale(coords.map((c) => c.z));
-
-  return labels.map((word, i) => ({ word, x: xs[i], y: ys[i], z: zs[i] }));
 }
 
 export function getTemperature(distance: number): "freezing" | "cold" | "cool" | "warm" | "hot" | "correct" {
@@ -159,7 +182,7 @@ export async function generatePuzzle(puzzleSet: { target: string; clues: string[
 
   const allWords = [...puzzleSet.clues, puzzleSet.target];
   const vectors = await getEmbeddings(allWords);
-  const points = reduceTo3D(vectors, allWords);
+  const { points, pcaParams } = reduceTo3D(vectors, allWords);
 
   const clues = puzzleSet.clues.map((word) => {
     const pt = points.find((p) => p.word === word)!;
@@ -177,6 +200,7 @@ export async function generatePuzzle(puzzleSet: { target: string; clues: string[
     targetZ: String(targetPt.z),
     clues,
     embeddingVectors,
+    pcaParams,
   }).returning();
 
   return puzzle;
