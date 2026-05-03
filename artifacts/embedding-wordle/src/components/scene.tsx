@@ -308,15 +308,21 @@ function Scene3D({ clues, target, guesses, solved, modelReady, hintWords, hintPh
       {/* Target */}
       {target && (() => {
         const isBhActive = bhPhase === "pulling" || bhPhase === "exploding";
-        const isBhRevealed = bhPhase === "revealed";
-        const color = solved ? TEMP_COLORS.correct : isBhRevealed ? "#a855f7" : isBhActive ? "#3b0764" : "#ffffff";
-        const label = solved ? target.word : isBhRevealed && bhRevealedWord ? bhRevealedWord.word : "?";
+        const color = solved ? TEMP_COLORS.correct : isBhActive ? "#3b0764" : "#ffffff";
         return (
-          <PointSphere position={targetPos3D} color={color} label={label}
-            pulse={!solved && !isBhActive && !isBhRevealed}
-            size={solved || isBhRevealed ? 0.3 : 0.2} isTarget={true} />
+          <PointSphere position={targetPos3D} color={color} label={solved ? target.word : "?"}
+            pulse={!solved && !isBhActive}
+            size={solved ? 0.3 : 0.2} isTarget={true} />
         );
       })()}
+
+      {/* BH revealed word — separate nearby sphere */}
+      {bhPhase === "revealed" && bhRevealedWord && (
+        <PointSphere
+          position={[targetPos3D[0] + 1.0, targetPos3D[1] + 1.0, targetPos3D[2]]}
+          color="#a855f7" label={bhRevealedWord.word} size={0.15}
+        />
+      )}
 
       {clues.map((clue, i) => (
         <PointSphere key={`clue-${i}`} position={[clue.x * 3, clue.y * 3, clue.z * 3]}
@@ -531,34 +537,48 @@ function Scene2D({ clues, target, guesses, solved, hintWords, hintPhase, bhPhase
           );
         })}
 
-        {/* BH revealed word shown on the target node below */}
+        {/* BH revealed word — separate nearby circle with connector */}
+        {bhPhase === "revealed" && bhRevealedWord && targetProj && (() => {
+          const rx = targetProj.cx + 54;
+          const ry2 = targetProj.cy - 40;
+          return (
+            <g>
+              <line x1={targetProj.cx} y1={targetProj.cy} x2={rx} y2={ry2}
+                stroke="#a855f7" strokeWidth={0.9} strokeOpacity={0.45} strokeDasharray="4 3" />
+              <circle cx={rx} cy={ry2} r={16} fill="#7c3aed" fillOpacity={0.18} stroke="#a855f7" strokeWidth={1.5} strokeOpacity={0.9} />
+              <circle cx={rx} cy={ry2} r={7} fill="#a855f7" fillOpacity={0.92} />
+              <text x={rx} y={ry2 - 22} textAnchor="middle" fill="#c084fc"
+                fontSize={11} fontFamily="monospace" fontWeight="bold" letterSpacing={3}>
+                {bhRevealedWord.word}
+              </text>
+            </g>
+          );
+        })()}
 
         {/* Target */}
         {target && targetProj && (() => {
           const { cx, cy } = targetProj;
           const isBhActive = bhPhase === "pulling" || bhPhase === "exploding";
-          const isBhRevealed = bhPhase === "revealed" && !!bhRevealedWord;
-          const color = solved ? "#ffd700" : isBhRevealed ? "#a855f7" : isBhActive ? "#7c3aed" : "#ffffff";
-          const label = solved ? target.word : isBhRevealed ? bhRevealedWord!.word : isBhActive ? "✦" : "?";
-          const outerR = isBhRevealed ? 20 : 16;
-          const innerR = isBhRevealed ? 10 : 8;
+          const color = solved ? "#ffd700" : isBhActive ? "#7c3aed" : "#ffffff";
+          const label = solved ? target.word : isBhActive ? "✦" : "?";
           return (
             <g>
-              <circle cx={cx} cy={cy} r={outerR} fill={color} fillOpacity={0.12} stroke={color} strokeWidth={1.5} />
-              <circle cx={cx} cy={cy} r={innerR} fill={color} fillOpacity={isBhActive ? 0.5 : 0.9} />
+              <circle cx={cx} cy={cy} r={16} fill={color} fillOpacity={0.12} stroke={color} strokeWidth={1.5} />
+              <circle cx={cx} cy={cy} r={8} fill={color} fillOpacity={isBhActive ? 0.5 : 0.9} />
               {isBhActive && (
                 <>
-                  <ellipse cx={cx} cy={cy} rx={18} ry={6} fill="none" stroke="#7c3aed" strokeWidth={1.2} opacity={0.6}>
-                    <animateTransform attributeName="transform" type="rotate" from={`0 ${cx} ${cy}`} to={`360 ${cx} ${cy}`} dur="2s" repeatCount="indefinite" />
+                  {/* Vertical breathing ellipse — slower than solar (4s vs 1.9s) */}
+                  <ellipse cx={cx} cy={cy} rx={22} ry={5} fill="none" stroke="#7c3aed" strokeWidth={1.5} opacity={0.5}>
+                    <animate attributeName="ry" values="5;22;5" dur="4s" repeatCount="indefinite" />
+                    <animate attributeName="opacity" values="0.3;0.72;0.3" dur="4s" repeatCount="indefinite" />
                   </ellipse>
-                  <ellipse cx={cx} cy={cy} rx={13} ry={4} fill="none" stroke="#a855f7" strokeWidth={0.8} opacity={0.4}>
-                    <animateTransform attributeName="transform" type="rotate" from={`360 ${cx} ${cy}`} to={`0 ${cx} ${cy}`} dur="1.5s" repeatCount="indefinite" />
+                  <ellipse cx={cx} cy={cy} rx={16} ry={4} fill="none" stroke="#a855f7" strokeWidth={1} opacity={0.3}>
+                    <animate attributeName="ry" values="4;16;4" dur="4s" begin="2s" repeatCount="indefinite" />
+                    <animate attributeName="opacity" values="0.15;0.5;0.15" dur="4s" begin="2s" repeatCount="indefinite" />
                   </ellipse>
                 </>
               )}
-              <text x={cx} y={cy - (outerR + 6)} textAnchor="middle" fill={color}
-                fontSize={isBhRevealed ? 13 : 12} fontFamily="monospace" fontWeight="bold"
-                letterSpacing={isBhRevealed ? 3 : 0}>
+              <text x={cx} y={cy - 22} textAnchor="middle" fill={color} fontSize={12} fontFamily="monospace" fontWeight="bold">
                 {label}
               </text>
             </g>
