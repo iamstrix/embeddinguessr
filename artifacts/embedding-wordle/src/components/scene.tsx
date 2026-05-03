@@ -260,10 +260,10 @@ function BhExplosion3D({ position }: { position: [number, number, number] }) {
   return <>{ring(m1, mat1, "#a855f7")}{ring(m2, mat2, "#7c3aed")}{ring(m3, mat3, "#c084fc")}</>;
 }
 
-function Scene3D({ clues, target, guesses, solved, modelReady, hintWords, hintPhase, bhPhase, bhEnergy, bhRevealedWord, autoRotate }: {
+function Scene3D({ clues, target, guesses, solved, modelReady, hintWords, hintPhase, bhPhase, bhEnergy, bhRevealedWord, autoRotate, showSimilarity }: {
   clues: EmbeddingPoint[]; target: EmbeddingPoint | null; guesses: GuessResult[];
   solved: boolean; modelReady: boolean; hintWords?: HintWord[]; hintPhase?: HintPhase;
-  bhPhase?: BhPhase; bhEnergy?: number; bhRevealedWord?: BhRevealedWord | null; autoRotate?: boolean;
+  bhPhase?: BhPhase; bhEnergy?: number; bhRevealedWord?: BhRevealedWord | null; autoRotate?: boolean; showSimilarity?: boolean;
 }) {
   if (!modelReady) {
     return (
@@ -329,7 +329,7 @@ function Scene3D({ clues, target, guesses, solved, modelReady, hintWords, hintPh
       {clues.map((clue, i) => (
         <PointSphere key={`clue-${i}`} position={[clue.x * 3, clue.y * 3, clue.z * 3]}
           color="#888888" label={clue.word}
-          sublabel={clue.similarityScore != null ? `${(clue.similarityScore * 100).toFixed(1)}%` : undefined}
+          sublabel={showSimilarity && clue.similarityScore != null ? `${(clue.similarityScore * 100).toFixed(1)}%` : undefined}
           size={0.15} />
       ))}
       {target && <Connectors clues={clues} target={target} />}
@@ -338,6 +338,7 @@ function Scene3D({ clues, target, guesses, solved, modelReady, hintWords, hintPh
       {showNormalGuesses && guesses.map((g, i) => (
         <PointSphere key={`guess-${i}`} position={[g.x * 3, g.y * 3, g.z * 3]}
           color={TEMP_COLORS[g.temperature] || "#ffffff"} label={g.word}
+          sublabel={showSimilarity ? `${(g.similarityScore * 100).toFixed(1)}%` : undefined}
           size={g.isCorrect ? 0.3 : 0.12} pulse={g.isCorrect} />
       ))}
       {showPullGuesses && <BhPullSpheres3D guesses={guesses} targetPos={targetPos3D} />}
@@ -378,10 +379,10 @@ function useRafProgress(active: boolean, duration: number, holdWhen?: boolean) {
   return progress;
 }
 
-function Scene2D({ clues, target, guesses, solved, hintWords, hintPhase, bhPhase, bhEnergy, bhRevealedWord }: {
+function Scene2D({ clues, target, guesses, solved, hintWords, hintPhase, bhPhase, bhEnergy, bhRevealedWord, showSimilarity }: {
   clues: EmbeddingPoint[]; target: EmbeddingPoint | null; guesses: GuessResult[];
   solved: boolean; hintWords?: HintWord[]; hintPhase?: HintPhase;
-  bhPhase?: BhPhase; bhEnergy?: number; bhRevealedWord?: BhRevealedWord | null;
+  bhPhase?: BhPhase; bhEnergy?: number; bhRevealedWord?: BhRevealedWord | null; showSimilarity?: boolean;
 }) {
   const W = 700; const H = 520; const PAD = 60;
 
@@ -509,10 +510,18 @@ function Scene2D({ clues, target, guesses, solved, hintWords, hintPhase, bhPhase
             <g key={`g-${i}`}>
               <circle cx={cx} cy={cy} r={r} fill={color} fillOpacity={opacity} />
               {!pullGuesses && (
-                <text x={cx} y={cy - r - 4} textAnchor="middle" fill={color}
-                  fontSize={9.5} fontFamily="monospace" fontWeight="bold" opacity={0.95}>
-                  {g.word}
-                </text>
+                <>
+                  {showSimilarity && (
+                    <text x={cx} y={cy - r - 14} textAnchor="middle" fill={color}
+                      fontSize={8} fontFamily="monospace" opacity={0.55}>
+                      {(g.similarityScore * 100).toFixed(1)}%
+                    </text>
+                  )}
+                  <text x={cx} y={cy - r - 4} textAnchor="middle" fill={color}
+                    fontSize={9.5} fontFamily="monospace" fontWeight="bold" opacity={0.95}>
+                    {g.word}
+                  </text>
+                </>
               )}
             </g>
           );
@@ -525,7 +534,7 @@ function Scene2D({ clues, target, guesses, solved, hintWords, hintPhase, bhPhase
             <g key={`c-${i}`}>
               <circle cx={cx} cy={cy} r={10} fill="#777" fillOpacity={0.9} />
               <text x={cx} y={cy - 16} textAnchor="middle" fill="white" fontSize={11} fontFamily="monospace" fontWeight="bold">{clue.word}</text>
-              {clue.similarityScore != null && (
+              {showSimilarity && clue.similarityScore != null && (
                 <text x={cx} y={cy - 5} textAnchor="middle" fill="white" fontSize={8} fontFamily="monospace" opacity={0.55}>
                   {(clue.similarityScore * 100).toFixed(1)}%
                 </text>
@@ -677,10 +686,10 @@ function Scene2D({ clues, target, guesses, solved, hintWords, hintPhase, bhPhase
 
 // ─── Main Scene Export ────────────────────────────────────────────────────────
 
-export function Scene({ clues, target, guesses, solved, modelReady, hintWords, hintPhase, bhPhase, bhEnergy, bhRevealedWord }: {
+export function Scene({ clues, target, guesses, solved, modelReady, hintWords, hintPhase, bhPhase, bhEnergy, bhRevealedWord, showSimilarity = true }: {
   clues: EmbeddingPoint[]; target: EmbeddingPoint | null; guesses: GuessResult[];
   solved: boolean; modelReady: boolean; hintWords?: HintWord[]; hintPhase?: HintPhase;
-  bhPhase?: BhPhase; bhEnergy?: number; bhRevealedWord?: BhRevealedWord | null;
+  bhPhase?: BhPhase; bhEnergy?: number; bhRevealedWord?: BhRevealedWord | null; showSimilarity?: boolean;
 }) {
   const [webglSupported, setWebglSupported] = useState<boolean | null>(null);
   const [autoRotate, setAutoRotate] = useState(true);
@@ -701,15 +710,20 @@ export function Scene({ clues, target, guesses, solved, modelReady, hintWords, h
 
   const scene2d = (
     <Scene2D clues={clues} target={target} guesses={guesses} solved={solved}
-      hintWords={hintWords} hintPhase={hintPhase} bhPhase={bhPhase} bhEnergy={bhEnergy} bhRevealedWord={bhRevealedWord} />
+      hintWords={hintWords} hintPhase={hintPhase} bhPhase={bhPhase} bhEnergy={bhEnergy}
+      bhRevealedWord={bhRevealedWord} showSimilarity={showSimilarity} />
   );
 
   const tooltip = (
-    <div className="absolute bottom-4 left-4 flex items-center gap-1.5 pointer-events-none select-none">
-      <kbd className="text-[10px] font-mono text-white/40 bg-white/5 border border-white/10 rounded px-1 py-0.5 leading-none">R</kbd>
-      <span className="text-[10px] font-mono text-white/30">
-        {autoRotate ? 'auto-rotate on' : 'auto-rotate off'}
-      </span>
+    <div className="absolute bottom-4 left-4 flex flex-col gap-1 pointer-events-none select-none">
+      <div className="flex items-center gap-1.5">
+        <kbd className="text-[10px] font-mono text-white/40 bg-white/5 border border-white/10 rounded px-1 py-0.5 leading-none">R</kbd>
+        <span className="text-[10px] font-mono text-white/30">{autoRotate ? 'auto-rotate on' : 'auto-rotate off'}</span>
+      </div>
+      <div className="flex items-center gap-1.5">
+        <kbd className="text-[10px] font-mono text-white/40 bg-white/5 border border-white/10 rounded px-1 py-0.5 leading-none">S</kbd>
+        <span className="text-[10px] font-mono text-white/30">{showSimilarity ? 'similarity on' : 'similarity off'}</span>
+      </div>
     </div>
   );
 
@@ -730,7 +744,7 @@ export function Scene({ clues, target, guesses, solved, modelReady, hintWords, h
       <CanvasErrorBoundary fallback={scene2d}>
         <Scene3D clues={clues} target={target} guesses={guesses} solved={solved} modelReady={modelReady}
           hintWords={hintWords} hintPhase={hintPhase} bhPhase={bhPhase} bhEnergy={bhEnergy}
-          bhRevealedWord={bhRevealedWord} autoRotate={autoRotate} />
+          bhRevealedWord={bhRevealedWord} autoRotate={autoRotate} showSimilarity={showSimilarity} />
       </CanvasErrorBoundary>
       {tooltip}
     </div>

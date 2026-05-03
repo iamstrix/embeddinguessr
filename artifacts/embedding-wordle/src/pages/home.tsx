@@ -39,8 +39,19 @@ export default function Home() {
   const [hintWords, setHintWords] = useState<HintWord[]>([]);
   const [bhPhase, setBhPhase] = useState<BhPhase>("idle");
   const [bhRevealedWord, setBhRevealedWord] = useState<BhRevealedWord | null>(null);
+  const [showSimilarity, setShowSimilarity] = useState(true);
 
   useEffect(() => { setDeviceId(getDeviceId()); }, []);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() === 's' && !['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) {
+        setShowSimilarity(prev => !prev);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
 
   const { data: puzzle, isLoading: isLoadingPuzzle } = useGetDailyPuzzle({
     query: {
@@ -136,6 +147,7 @@ export default function Home() {
             bhPhase={bhPhase}
             bhEnergy={bhEnergy}
             bhRevealedWord={bhRevealedWord}
+            showSimilarity={showSimilarity}
           />
         </div>
 
@@ -260,9 +272,11 @@ export default function Home() {
                             <div className={`w-3 h-3 rounded-full shadow-[0_0_10px_rgba(255,255,255,0.2)] ${TEMP_COLORS[g.temperature]}`} />
                             <span className={`font-mono ${g.isCorrect ? "font-bold text-yellow-400" : "text-white"}`}>{g.word}</span>
                           </div>
-                          <div className="text-xs font-mono text-white/50">
-                            {(g.similarityScore * 100).toFixed(1)}%
-                          </div>
+                          {showSimilarity && (
+                            <div className="text-xs font-mono text-white/50">
+                              {(g.similarityScore * 100).toFixed(1)}%
+                            </div>
+                          )}
                         </motion.div>
                       ))}
                     </AnimatePresence>
@@ -288,7 +302,7 @@ export default function Home() {
                               <div className="w-2 h-2 rounded-full bg-yellow-400" />
                               <span className="font-mono text-yellow-300 text-sm">{hw.word}</span>
                             </div>
-                            <span className="text-xs font-mono text-yellow-500/70">{(hw.similarity * 100).toFixed(1)}%</span>
+                            {showSimilarity && <span className="text-xs font-mono text-yellow-500/70">{(hw.similarity * 100).toFixed(1)}%</span>}
                           </motion.div>
                         ))}
                       </motion.div>

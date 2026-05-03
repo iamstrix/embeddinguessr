@@ -42,8 +42,19 @@ export default function Endless() {
   const [hintWords, setHintWords] = useState<HintWord[]>([]);
   const [bhPhase, setBhPhase] = useState<BhPhase>("idle");
   const [bhRevealedWord, setBhRevealedWord] = useState<BhRevealedWord | null>(null);
+  const [showSimilarity, setShowSimilarity] = useState(true);
 
   useEffect(() => { setDeviceId(getDeviceId()); }, []);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() === 's' && !['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) {
+        setShowSimilarity(prev => !prev);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
 
   const { mutate: createEndlessPuzzle } = useCreateEndlessPuzzle();
   const { mutate: createSession } = useCreateSession();
@@ -161,6 +172,7 @@ export default function Endless() {
             bhPhase={bhPhase}
             bhEnergy={bhEnergy}
             bhRevealedWord={bhRevealedWord}
+            showSimilarity={showSimilarity}
           />
         </div>
 
@@ -324,9 +336,11 @@ export default function Endless() {
                               {g.word}
                             </span>
                           </div>
-                          <div className="text-xs font-mono text-white/50">
-                            {(g.similarityScore * 100).toFixed(1)}%
-                          </div>
+                          {showSimilarity && (
+                            <div className="text-xs font-mono text-white/50">
+                              {(g.similarityScore * 100).toFixed(1)}%
+                            </div>
+                          )}
                         </motion.div>
                       ))}
                     </AnimatePresence>
@@ -352,7 +366,7 @@ export default function Endless() {
                               <div className="w-2 h-2 rounded-full bg-yellow-400" />
                               <span className="font-mono text-yellow-300 text-sm">{hw.word}</span>
                             </div>
-                            <span className="text-xs font-mono text-yellow-500/70">{(hw.similarity * 100).toFixed(1)}%</span>
+                            {showSimilarity && <span className="text-xs font-mono text-yellow-500/70">{(hw.similarity * 100).toFixed(1)}%</span>}
                           </motion.div>
                         ))}
                       </motion.div>
